@@ -21,6 +21,7 @@ getgenv().SelectedMob   = nil   -- nil = auto chọn theo level
 getgenv().WeaponMode    = "Melee" -- "Melee" hoặc "Fruit"
 getgenv().SelectedSkill  = 0      -- 0 = None, 1-5 = Z/X/C/V/F
 getgenv().AttackCooldown = 0.3
+getgenv().IsTeleporting  = false  -- bypass teleport flag
 
 -- ==========================================
 -- 1. ANTI-KICK HOOK
@@ -34,6 +35,64 @@ OldNameKick = hookmetamethod(game, "__namecall", function(self, ...)
         return nil
     end
     return OldNameKick(self, ...)
+end)
+
+-- ==========================================
+-- 1b. BYPASS TELEPORT (ANTI-CHEAT GETGC HOOK)
+-- ==========================================
+if getgc and hookfunction then
+    local hookedCount = 0
+
+    for _, v in pairs(getgc(true)) do
+        if type(v) == "function" then
+            local ok, info = pcall(getinfo, v)
+            if ok and info and info.source then
+                if info.source:find("AntiCheat") or info.source:find("ControlClient") or info.source:find("Idle") then
+                    if info.name and (info.name:lower():find("kick") or info.name:lower():find("ban") or info.name:lower():find("teleport")) then
+                        hookfunction(v, function(...)
+                            return nil
+                        end)
+                        hookedCount = hookedCount + 1
+                    end
+                end
+            end
+
+            -- Patch upvalues: IsTeleporting = false, speed limits = 99999
+            pcall(function()
+                local upvalues = getupvalues(v)
+                for key, val in pairs(upvalues) do
+                    if type(key) == "string" then
+                        if key:lower() == "isteleporting" then
+                            setupvalue(v, key, false)
+                        elseif key:lower() == "maxspeed" or key:lower() == "speedlimit" then
+                            setupvalue(v, key, 99999)
+                        end
+                    end
+                end
+            end)
+        end
+    end
+
+    warn("[BYPASS] Hooked " .. tostring(hookedCount) .. " AC functions")
+end
+
+-- Physics fixer: PlatformStand khi đang tween để không bị freeze
+task.spawn(function()
+    while task.wait(0.1) do
+        local char = player.Character
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        local hum  = char and char:FindFirstChild("Humanoid")
+        if hum and root and getgenv().IsTeleporting then
+            hum.PlatformStand = true
+            hum:ChangeState(Enum.HumanoidStateType.Physics)
+            root.Velocity = Vector3.new(0, 0, 0)
+        elseif hum and not getgenv().IsTeleporting then
+            if hum.PlatformStand then
+                hum.PlatformStand = false
+                hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+            end
+        end
+    end
 end)
 
 -- ==========================================
@@ -631,7 +690,11 @@ local function tweenToMob(mob)
     if not mob or not mob:FindFirstChild("HumanoidRootPart") then return end
 
     local targetCFrame = CFrame.new(mob.HumanoidRootPart.Position + Vector3.new(0, 0, 5))
+    getgenv().IsTeleporting = true
     local tween = TweenService:Create(char.HumanoidRootPart, tweenInfo, { CFrame = targetCFrame })
+    tween.Completed:Connect(function()
+        getgenv().IsTeleporting = false
+    end)
     tween:Play()
 end
 
