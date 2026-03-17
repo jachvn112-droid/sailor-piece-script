@@ -27,16 +27,38 @@ getgenv().AttackCooldown = 0.3
 getgenv().IsTeleporting  = false
 
 -- ══════════════════════════════════════════
--- 1. ANTI-KICK HOOK
+-- 1. ANTI-KICK + ANTI-TP-BACK HOOK
 -- ══════════════════════════════════════════
+-- Tên remote mà game dùng để kiểm tra vị trí / tele về chỗ cũ
+local BLOCKED_REMOTES = {
+    sanity = true, checksanity = true, positioncheck = true,
+    antiteleport = true, validateposition = true, checkpos = true,
+    anticheat = true, positionvalidate = true, sanitycheck = true,
+    movementcheck = true, speedcheck = true, teleportback = true,
+}
+
 local OldNameKick
 OldNameKick = hookmetamethod(game, "__namecall", function(self, ...)
     local method = getnamecallmethod()
     local args   = {...}
+
+    -- Block kick
     if (method == "Kick" or method == "kick") and (self == player or self == Players) then
         warn("[AntiKick] Blocked kick:", args[1])
         return nil
     end
+
+    -- Block anti-teleport remotes khi đang farm
+    if getgenv().IsFarm and (method == "FireServer" or method == "InvokeServer") then
+        if self and self:IsA("RemoteEvent") or (self and pcall(function() return self:IsA("RemoteFunction") end)) then
+            local remoteName = self.Name:lower():gsub("_", ""):gsub("-", "")
+            if BLOCKED_REMOTES[remoteName] then
+                warn("[AntiTP] Blocked remote:", self.Name)
+                return nil
+            end
+        end
+    end
+
     return OldNameKick(self, ...)
 end)
 
@@ -49,8 +71,8 @@ if getgc and hookfunction then
         if type(v) == "function" then
             local ok, info = pcall(getinfo, v)
             if ok and info and info.source then
-                if info.source:find("AntiCheat") or info.source:find("ControlClient") or info.source:find("Idle") then
-                    if info.name and (info.name:lower():find("kick") or info.name:lower():find("ban") or info.name:lower():find("teleport")) then
+                if info.source:find("AntiCheat") or info.source:find("ControlClient") or info.source:find("Idle") or info.source:find("Sanity") or info.source:find("Movement") then
+                    if info.name and (info.name:lower():find("kick") or info.name:lower():find("ban") or info.name:lower():find("teleport") or info.name:lower():find("position") or info.name:lower():find("sanity") or info.name:lower():find("speed") or info.name:lower():find("check")) then
                         hookfunction(v, function(...) return nil end)
                         hookedCount = hookedCount + 1
                     end
@@ -256,9 +278,12 @@ local function teleportToIsland(currentLevel)
 end
 
 -- ══════════════════════════════════════════
--- 5. FIND MOB & TWEEN
+-- 5. FIND MOB & INCREMENTAL STEP-TWEEN (BYPASS)
 -- ══════════════════════════════════════════
-local tweenInfo = TweenInfo.new(0.5)
+local STEP_SIZE   = 50       -- studs per hop
+local STEP_TIME   = 0.08     -- tween time per hop
+local STEP_DELAY  = 0.03     -- wait giữa các hop
+local CLOSE_RANGE = 15       -- nếu gần hơn thì tween thẳng (ko bị detect)
 
 local function findMob(targetName)
     local npcFolder = workspace:FindFirstChild("NPCs")
@@ -295,18 +320,77 @@ local function findMob(targetName)
     return closest, closestDist
 end
 
+-- Tween nhỏ 1 bước (dùng nội bộ)
+local function microTween(root, targetCF)
+    local tw = TweenService:Create(
+        root,
+        TweenInfo.new(STEP_TIME, Enum.EasingStyle.Linear),
+        { CFrame = targetCF }
+    )
+    tw:Play()
+    tw.Completed:Wait()
+end
+
+-- Incremental step-tween: di chuyển từng bước nhỏ thay vì teleport thẳng
 local function tweenToMob(mob)
     local char = player.Character
     if not char or not char:FindFirstChild("HumanoidRootPart") then return end
     if not mob or not mob:FindFirstChild("HumanoidRootPart") then return end
 
-    local targetCFrame = CFrame.new(mob.HumanoidRootPart.Position + Vector3.new(0, 0, 5))
+    local root = char.HumanoidRootPart
+    local hum  = char:FindFirstChildOfClass("Humanoid")
+    local targetPos = mob.HumanoidRootPart.Position + Vector3.new(0, 0, 5)
+    local totalDist = (targetPos - root.Position).Magnitude
+
     getgenv().IsTeleporting = true
-    local tween = TweenService:Create(char.HumanoidRootPart, tweenInfo, { CFrame = targetCFrame })
-    tween.Completed:Connect(function()
+
+    -- Nếu rất gần → tween thẳng (an toàn, ko bị detect)
+    if totalDist <= CLOSE_RANGE then
+        microTween(root, CFrame.new(targetPos))
         getgenv().IsTeleporting = false
-    end)
-    tween:Play()
+        return
+    end
+
+    -- Tính số bước cần đi
+    local steps = math.ceil(totalDist / STEP_SIZE)
+    local startPos = root.Position
+    local direction = (targetPos - startPos).Unit
+
+    for i = 1, steps do
+        if not getgenv().IsFarm then break end
+        if not mob or not mob.Parent then break end -- mob đã chết/biến mất
+
+        -- Cập nhật target nếu mob di chuyển
+        if mob:FindFirstChild("HumanoidRootPart") then
+            targetPos = mob.HumanoidRootPart.Position + Vector3.new(0, 0, 5)
+        end
+
+        local nextPos
+        if i == steps then
+            -- Bước cuối: đến đích
+            nextPos = targetPos
+        else
+            -- Bước trung gian
+            local progress = i / steps
+            nextPos = startPos:Lerp(targetPos, progress)
+        end
+
+        -- Spoof velocity để trông tự nhiên
+        local moveDir = (nextPos - root.Position)
+        if moveDir.Magnitude > 0 then
+            root.Velocity = moveDir.Unit * 50 -- giả lập di chuyển
+        end
+
+        -- Micro-tween bước này
+        microTween(root, CFrame.new(nextPos))
+
+        -- Nghỉ giữa các bước
+        task.wait(STEP_DELAY)
+    end
+
+    -- Đảm bảo velocity = 0 khi xong
+    root.Velocity = Vector3.new(0, 0, 0)
+    getgenv().IsTeleporting = false
 end
 
 -- ══════════════════════════════════════════
