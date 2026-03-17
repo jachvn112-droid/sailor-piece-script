@@ -19,6 +19,7 @@ local checkmap      = require(RepStorage.TravelConfig)
 getgenv().IsFarm        = false
 getgenv().SelectedMob   = nil   -- nil = auto chọn theo level
 getgenv().WeaponMode    = "Melee" -- "Melee" hoặc "Fruit"
+getgenv().SelectedSkill  = 0      -- 0 = None, 1-5 = Z/X/C/V/F
 getgenv().AttackCooldown = 0.3
 
 -- ==========================================
@@ -233,7 +234,7 @@ minBtn.MouseButton1Click:Connect(function()
         mainFrame.Size = UDim2.new(0, 280, 0, 40)
         minBtn.Text = "+"
     else
-        mainFrame.Size = UDim2.new(0, 280, 0, 380)
+        mainFrame.Size = UDim2.new(0, 280, 0, 440)
         minBtn.Text = "—"
     end
 end)
@@ -396,6 +397,20 @@ end)
 -- 4.2 DROPDOWN: VŨ KHÍ
 local weaponDropdown = addDropdown("⚔️ Weapon Mode", {"Melee", "Fruit"}, "Melee", function(val)
     getgenv().WeaponMode = val
+end)
+
+-- 4.2b DROPDOWN: SKILL (Z/X/C/V/F)
+local skillOptions = {"None", "[Z] Skill 1", "[X] Skill 2", "[C] Skill 3", "[V] Skill 4", "[F] Skill 5"}
+local skillMap = {
+    ["None"] = 0,
+    ["[Z] Skill 1"] = 1,
+    ["[X] Skill 2"] = 2,
+    ["[C] Skill 3"] = 3,
+    ["[V] Skill 4"] = 4,
+    ["[F] Skill 5"] = 5,
+}
+local skillDropdown = addDropdown("🔥 Spam Skill", skillOptions, "None", function(val)
+    getgenv().SelectedSkill = skillMap[val] or 0
 end)
 
 -- 4.3 DROPDOWN: CHỌN QUÁI
@@ -665,37 +680,25 @@ local function autoAttack(mob)
 
     local tool = equipWeapon()
 
-    -- Cách 1: Dùng Tool:Activate()
+    -- Equip tool nếu có
     if tool then
         pcall(function()
             tool:Activate()
         end)
     end
 
-    -- Cách 2: Fire combat remote (phổ biến trong Sailor Piece)
+    -- Fire RequestHit remote (đúng path của Sailor Piece)
     pcall(function()
-        local remotes = RepStorage:FindFirstChild("Remotes") or RepStorage:FindFirstChild("RemoteEvents")
-        if remotes then
-            local combatRemote = remotes:FindFirstChild("CombatRemote")
-                or remotes:FindFirstChild("Attack")
-                or remotes:FindFirstChild("DealDamage")
-            if combatRemote then
-                if combatRemote:IsA("RemoteEvent") then
-                    combatRemote:FireServer(mob)
-                elseif combatRemote:IsA("RemoteFunction") then
-                    combatRemote:InvokeServer(mob)
-                end
-            end
-        end
+        RepStorage:WaitForChild("CombatSystem"):WaitForChild("Remotes"):WaitForChild("RequestHit"):FireServer()
     end)
 
-    -- Cách 3: Virtual click (mouse simulation)
-    pcall(function()
-        local vim = game:GetService("VirtualInputManager")
-        vim:SendMouseButtonEvent(0, 0, 0, true, game, 1)
-        task.wait(0.05)
-        vim:SendMouseButtonEvent(0, 0, 0, false, game, 1)
-    end)
+    -- Fire RequestAbility nếu chọn skill (1-5 = Z/X/C/V/F)
+    local skillId = getgenv().SelectedSkill
+    if skillId and skillId > 0 then
+        pcall(function()
+            RepStorage:WaitForChild("AbilitySystem"):WaitForChild("Remotes"):WaitForChild("RequestAbility"):FireServer(skillId)
+        end)
+    end
 end
 
 -- ==========================================
