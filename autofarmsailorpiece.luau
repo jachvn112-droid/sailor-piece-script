@@ -234,7 +234,7 @@ minBtn.MouseButton1Click:Connect(function()
         mainFrame.Size = UDim2.new(0, 280, 0, 40)
         minBtn.Text = "+"
     else
-        mainFrame.Size = UDim2.new(0, 280, 0, 440)
+        mainFrame.Size = UDim2.new(0, 280, 0, 520)
         minBtn.Text = "—"
     end
 end)
@@ -392,6 +392,20 @@ end
 -- 4.1 TOGGLE AUTO FARM
 addToggle("Auto Farm", false, function(state)
     getgenv().IsFarm = state
+end)
+
+-- 4.1b TOGGLE: AUTO HAKI
+addToggle("⬛ Auto Haki", false, function(state)
+    pcall(function()
+        game:GetService("ReplicatedStorage"):WaitForChild("RemoteEvents"):WaitForChild("HakiRemote"):FireServer("Toggle")
+    end)
+end)
+
+-- 4.1c TOGGLE: OBS HAKI
+addToggle("👁️ Obs Haki", false, function(state)
+    pcall(function()
+        game:GetService("ReplicatedStorage"):WaitForChild("RemoteEvents"):WaitForChild("ObservationHakiRemote"):FireServer("Toggle")
+    end)
 end)
 
 -- 4.2 DROPDOWN: VŨ KHÍ
