@@ -1,31 +1,34 @@
--- ==========================================
--- AutoFarm Sailor Piece (Full UI Version)
--- Game: Sailor Piece (Roblox)
--- Author: jachvn112-droid
--- ==========================================
+--[[
+    ╔══════════════════════════════════════════╗
+    ║  Sailor Piece Hub v3 — NovaLib Remake    ║
+    ║  Author: jachvn112-droid                 ║
+    ║  UI: NovaLib | Game: Sailor Piece        ║
+    ╚══════════════════════════════════════════╝
+]]
 
--- ==========================================
--- 0. SERVICES & BIẾN TOÀN CỤC
--- ==========================================
-local Players       = game:GetService("Players")
-local TweenService  = game:GetService("TweenService")
-local RepStorage    = game:GetService("ReplicatedStorage")
-local UIS           = game:GetService("UserInputService")
+-- ══════════════════════════════════════════
+-- 0. SERVICES & GLOBALS
+-- ══════════════════════════════════════════
+local Players      = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local RepStorage   = game:GetService("ReplicatedStorage")
+local UIS          = game:GetService("UserInputService")
 
-local player        = Players.LocalPlayer
-local questcheck    = require(RepStorage.Modules.QuestConfig)
-local checkmap      = require(RepStorage.TravelConfig)
+local player       = Players.LocalPlayer
+local questcheck   = require(RepStorage.Modules.QuestConfig)
+local checkmap     = require(RepStorage.TravelConfig)
 
-getgenv().IsFarm        = false
-getgenv().SelectedMob   = nil   -- nil = auto chọn theo level
-getgenv().WeaponMode    = "Melee" -- "Melee" hoặc "Fruit"
-getgenv().SelectedSkill  = 0      -- 0 = None, 1-5 = Z/X/C/V/F
+-- State
+getgenv().IsFarm         = false
+getgenv().SelectedMob    = nil       -- nil = auto theo level
+getgenv().WeaponMode     = "Melee"   -- "Melee" | "Fruit"
+getgenv().SelectedSkill  = 0         -- 0=None, 1-5=Z/X/C/V/F
 getgenv().AttackCooldown = 0.3
-getgenv().IsTeleporting  = false  -- bypass teleport flag
+getgenv().IsTeleporting  = false
 
--- ==========================================
+-- ══════════════════════════════════════════
 -- 1. ANTI-KICK HOOK
--- ==========================================
+-- ══════════════════════════════════════════
 local OldNameKick
 OldNameKick = hookmetamethod(game, "__namecall", function(self, ...)
     local method = getnamecallmethod()
@@ -37,27 +40,22 @@ OldNameKick = hookmetamethod(game, "__namecall", function(self, ...)
     return OldNameKick(self, ...)
 end)
 
--- ==========================================
+-- ══════════════════════════════════════════
 -- 1b. BYPASS TELEPORT (ANTI-CHEAT GETGC HOOK)
--- ==========================================
+-- ══════════════════════════════════════════
 if getgc and hookfunction then
     local hookedCount = 0
-
     for _, v in pairs(getgc(true)) do
         if type(v) == "function" then
             local ok, info = pcall(getinfo, v)
             if ok and info and info.source then
                 if info.source:find("AntiCheat") or info.source:find("ControlClient") or info.source:find("Idle") then
                     if info.name and (info.name:lower():find("kick") or info.name:lower():find("ban") or info.name:lower():find("teleport")) then
-                        hookfunction(v, function(...)
-                            return nil
-                        end)
+                        hookfunction(v, function(...) return nil end)
                         hookedCount = hookedCount + 1
                     end
                 end
             end
-
-            -- Patch upvalues: IsTeleporting = false, speed limits = 99999
             pcall(function()
                 local upvalues = getupvalues(v)
                 for key, val in pairs(upvalues) do
@@ -72,11 +70,10 @@ if getgc and hookfunction then
             end)
         end
     end
-
     warn("[BYPASS] Hooked " .. tostring(hookedCount) .. " AC functions")
 end
 
--- Physics fixer: PlatformStand khi đang tween để không bị freeze
+-- Physics fixer: PlatformStand khi đang tween
 task.spawn(function()
     while task.wait(0.1) do
         local char = player.Character
@@ -95,22 +92,21 @@ task.spawn(function()
     end
 end)
 
--- ==========================================
--- 2. MOB DATA: QUÉT VÀ SORT THEO LEVEL
--- ==========================================
-local MobDatabase = {} -- { {name, level, island}, ... } sorted thấp → cao
+-- ══════════════════════════════════════════
+-- 2. MOB DATABASE: QUÉT & SORT THEO LEVEL
+-- ══════════════════════════════════════════
+local MobDatabase = {}
 
 local function buildMobDatabase()
     table.clear(MobDatabase)
 
-    -- Lấy mapping: npcType → recommendedLevel từ QuestConfig
+    -- npcType → recommendedLevel từ QuestConfig
     local npcLevelMap = {}
     for _, questData in pairs(questcheck.RepeatableQuests) do
         local reqLevel = tonumber(questData.recommendedLevel) or 0
         if questData.requirements then
             for _, req in ipairs(questData.requirements) do
                 if req.npcType then
-                    -- Luôn lấy level cao nhất nếu trùng tên quái
                     if not npcLevelMap[req.npcType] or reqLevel > npcLevelMap[req.npcType] then
                         npcLevelMap[req.npcType] = reqLevel
                     end
@@ -119,7 +115,7 @@ local function buildMobDatabase()
         end
     end
 
-    -- Quét workspace để tìm loại quái thực tế có mặt
+    -- Quét workspace.NPCs
     local seenTypes = {}
     local npcFolder = workspace:FindFirstChild("NPCs")
     if npcFolder then
@@ -129,7 +125,6 @@ local function buildMobDatabase()
                 if not seenTypes[npcName] then
                     seenTypes[npcName] = true
 
-                    -- Tìm level từ quest map, mặc định 0
                     local level = 0
                     for npcType, lvl in pairs(npcLevelMap) do
                         if string.find(npcName, npcType) then
@@ -138,7 +133,6 @@ local function buildMobDatabase()
                         end
                     end
 
-                    -- Tìm đảo
                     local island = "Unknown"
                     pcall(function()
                         local zoneId, _ = checkmap.GetZoneAt(npc.HumanoidRootPart.Position)
@@ -155,435 +149,30 @@ local function buildMobDatabase()
         end
     end
 
-    -- Sort level thấp → cao
     table.sort(MobDatabase, function(a, b)
-        if a.level == b.level then
-            return a.name < b.name
-        end
+        if a.level == b.level then return a.name < b.name end
         return a.level < b.level
     end)
 end
 
--- ==========================================
--- 3. UI SYSTEM
--- ==========================================
--- Xoá UI cũ nếu có
-if player.PlayerGui:FindFirstChild("AutoFarmGui") then
-    player.PlayerGui:FindFirstChild("AutoFarmGui"):Destroy()
-end
-
-local gui = Instance.new("ScreenGui")
-gui.Name = "AutoFarmGui"
-gui.ResetOnSpawn = false
-gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-gui.Parent = player.PlayerGui
-
--- === Helper: tạo UIObject nhanh ===
-local function create(className, props)
-    local inst = Instance.new(className)
-    for k, v in pairs(props) do
-        if k ~= "Parent" and k ~= "Children" then
-            inst[k] = v
-        end
+-- Log toàn bộ quest mapping khi load
+task.spawn(function()
+    print("╔══════════════════════════════════════════╗")
+    print("║     QUEST → MOB MAPPING (Debug Log)     ║")
+    print("╠══════════════════════════════════════════╣")
+    for npcName, data in pairs(questcheck.RepeatableQuests) do
+        local req = data.requirements and data.requirements[1]
+        local mobType = req and req.npcType or "???"
+        local amount  = req and req.amount or "?"
+        local lvl     = data.recommendedLevel or "?"
+        print(string.format("║ [Quest] %-16s → Lv.%-4s → Kill %-12s x%s", npcName, tostring(lvl), mobType, tostring(amount)))
     end
-    if props.Children then
-        for _, child in ipairs(props.Children) do
-            child.Parent = inst
-        end
-    end
-    if props.Parent then
-        inst.Parent = props.Parent
-    end
-    return inst
-end
-
--- MAIN FRAME (kéo thả được)
-local mainFrame = create("Frame", {
-    Name = "MainFrame",
-    Size = UDim2.new(0, 280, 0, 380),
-    Position = UDim2.new(0, 20, 0.5, -190),
-    BackgroundColor3 = Color3.fromRGB(20, 20, 30),
-    BorderSizePixel = 0,
-    Parent = gui,
-    Children = {
-        create("UICorner", { CornerRadius = UDim.new(0, 12) }),
-        create("UIStroke", { Color = Color3.fromRGB(80, 80, 120), Thickness = 1.5 }),
-    }
-})
-
--- TITLE BAR (kéo thả)
-local titleBar = create("Frame", {
-    Name = "TitleBar",
-    Size = UDim2.new(1, 0, 0, 36),
-    BackgroundColor3 = Color3.fromRGB(30, 30, 50),
-    BorderSizePixel = 0,
-    Parent = mainFrame,
-    Children = {
-        create("UICorner", { CornerRadius = UDim.new(0, 12) }),
-    }
-})
-
-create("TextLabel", {
-    Size = UDim2.new(1, -10, 1, 0),
-    Position = UDim2.new(0, 10, 0, 0),
-    BackgroundTransparency = 1,
-    Text = "⚓ Sailor Piece Farm",
-    TextColor3 = Color3.fromRGB(220, 220, 255),
-    TextSize = 16,
-    Font = Enum.Font.GothamBold,
-    TextXAlignment = Enum.TextXAlignment.Left,
-    Parent = titleBar,
-})
-
--- Minimize button
-local minimized = false
-local contentFrame -- forward declare
-
-local minBtn = create("TextButton", {
-    Name = "MinBtn",
-    Size = UDim2.new(0, 28, 0, 28),
-    Position = UDim2.new(1, -32, 0, 4),
-    BackgroundColor3 = Color3.fromRGB(60, 60, 90),
-    Text = "—",
-    TextColor3 = Color3.fromRGB(200, 200, 200),
-    TextSize = 16,
-    Font = Enum.Font.GothamBold,
-    BorderSizePixel = 0,
-    Parent = titleBar,
-    Children = { create("UICorner", { CornerRadius = UDim.new(0, 6) }) }
-})
-
--- DRAGGABLE
-local dragging, dragStart, startPos
-titleBar.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = true
-        dragStart = input.Position
-        startPos = mainFrame.Position
-    end
+    print("╚══════════════════════════════════════════╝")
 end)
 
-UIS.InputChanged:Connect(function(input)
-    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-        local delta = input.Position - dragStart
-        mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-    end
-end)
-
-UIS.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = false
-    end
-end)
-
--- CONTENT FRAME (chứa nội dung bên dưới title)
-contentFrame = create("Frame", {
-    Name = "Content",
-    Size = UDim2.new(1, -20, 1, -46),
-    Position = UDim2.new(0, 10, 0, 40),
-    BackgroundTransparency = 1,
-    Parent = mainFrame,
-})
-
--- === Minimize toggle ===
-minBtn.MouseButton1Click:Connect(function()
-    minimized = not minimized
-    contentFrame.Visible = not minimized
-    if minimized then
-        mainFrame.Size = UDim2.new(0, 280, 0, 40)
-        minBtn.Text = "+"
-    else
-        mainFrame.Size = UDim2.new(0, 280, 0, 560)
-        minBtn.Text = "—"
-    end
-end)
-
--- === Helper: Section Label ===
-local nextY = 0
-local function addLabel(text)
-    local lbl = create("TextLabel", {
-        Size = UDim2.new(1, 0, 0, 18),
-        Position = UDim2.new(0, 0, 0, nextY),
-        BackgroundTransparency = 1,
-        Text = text,
-        TextColor3 = Color3.fromRGB(160, 160, 200),
-        TextSize = 12,
-        Font = Enum.Font.GothamSemibold,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        Parent = contentFrame,
-    })
-    nextY = nextY + 20
-    return lbl
-end
-
--- === Helper: Toggle Button ===
-local function addToggle(text, default, callback)
-    local state = default
-
-    local btn = create("TextButton", {
-        Size = UDim2.new(1, 0, 0, 34),
-        Position = UDim2.new(0, 0, 0, nextY),
-        BackgroundColor3 = state and Color3.fromRGB(40, 120, 60) or Color3.fromRGB(120, 40, 40),
-        Text = text .. (state and "  ✅ ON" or "  ❌ OFF"),
-        TextColor3 = Color3.fromRGB(255, 255, 255),
-        TextSize = 14,
-        Font = Enum.Font.GothamBold,
-        BorderSizePixel = 0,
-        Parent = contentFrame,
-        Children = { create("UICorner", { CornerRadius = UDim.new(0, 8) }) }
-    })
-    nextY = nextY + 40
-
-    btn.MouseButton1Click:Connect(function()
-        state = not state
-        btn.BackgroundColor3 = state and Color3.fromRGB(40, 120, 60) or Color3.fromRGB(120, 40, 40)
-        btn.Text = text .. (state and "  ✅ ON" or "  ❌ OFF")
-        callback(state)
-    end)
-
-    return btn
-end
-
--- === Helper: Dropdown ===
-local function addDropdown(label, options, default, callback)
-    addLabel(label)
-
-    local container = create("Frame", {
-        Size = UDim2.new(1, 0, 0, 30),
-        Position = UDim2.new(0, 0, 0, nextY),
-        BackgroundColor3 = Color3.fromRGB(35, 35, 55),
-        BorderSizePixel = 0,
-        Parent = contentFrame,
-        ClipsDescendants = true,
-        Children = { create("UICorner", { CornerRadius = UDim.new(0, 8) }) }
-    })
-    nextY = nextY + 36
-
-    local selected = default or (options[1] or "")
-    local isOpen = false
-
-    local mainBtn = create("TextButton", {
-        Size = UDim2.new(1, 0, 0, 30),
-        BackgroundTransparency = 1,
-        Text = "  " .. tostring(selected) .. "  ▼",
-        TextColor3 = Color3.fromRGB(220, 220, 255),
-        TextSize = 13,
-        Font = Enum.Font.GothamSemibold,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        Parent = container,
-    })
-
-    local listFrame = create("ScrollingFrame", {
-        Size = UDim2.new(1, 0, 0, 0),
-        Position = UDim2.new(0, 0, 0, 30),
-        BackgroundColor3 = Color3.fromRGB(28, 28, 45),
-        BorderSizePixel = 0,
-        ScrollBarThickness = 4,
-        ScrollBarImageColor3 = Color3.fromRGB(80, 80, 120),
-        CanvasSize = UDim2.new(0, 0, 0, #options * 26),
-        Parent = container,
-        Children = {
-            create("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 2) }),
-        }
-    })
-
-    local function populateList(opts)
-        for _, child in ipairs(listFrame:GetChildren()) do
-            if child:IsA("TextButton") then child:Destroy() end
-        end
-        listFrame.CanvasSize = UDim2.new(0, 0, 0, #opts * 26)
-        for i, opt in ipairs(opts) do
-            local optBtn = create("TextButton", {
-                Size = UDim2.new(1, -4, 0, 24),
-                BackgroundColor3 = Color3.fromRGB(42, 42, 65),
-                Text = "  " .. tostring(opt),
-                TextColor3 = Color3.fromRGB(200, 200, 230),
-                TextSize = 12,
-                Font = Enum.Font.Gotham,
-                TextXAlignment = Enum.TextXAlignment.Left,
-                BorderSizePixel = 0,
-                LayoutOrder = i,
-                Parent = listFrame,
-                Children = { create("UICorner", { CornerRadius = UDim.new(0, 4) }) }
-            })
-            optBtn.MouseButton1Click:Connect(function()
-                selected = opt
-                mainBtn.Text = "  " .. tostring(selected) .. "  ▼"
-                isOpen = false
-                container.Size = UDim2.new(1, 0, 0, 30)
-                callback(selected)
-            end)
-        end
-    end
-
-    populateList(options)
-
-    mainBtn.MouseButton1Click:Connect(function()
-        isOpen = not isOpen
-        if isOpen then
-            local listH = math.min(#options * 26, 130)
-            container.Size = UDim2.new(1, 0, 0, 30 + listH)
-        else
-            container.Size = UDim2.new(1, 0, 0, 30)
-        end
-    end)
-
-    -- Return update function để refresh options
-    local dropdown = {}
-    dropdown.setOptions = function(newOpts)
-        options = newOpts
-        populateList(options)
-    end
-    dropdown.setSelected = function(val)
-        selected = val
-        mainBtn.Text = "  " .. tostring(selected) .. "  ▼"
-    end
-    dropdown.getSelected = function()
-        return selected
-    end
-    return dropdown
-end
-
--- ==========================================
--- 4. TẠO UI ELEMENTS
--- ==========================================
-
--- 4.1 TOGGLE AUTO FARM
-addToggle("Auto Farm", false, function(state)
-    getgenv().IsFarm = state
-end)
-
--- 4.1b TOGGLE: AUTO HAKI
-addToggle("⬛ Auto Haki", false, function(state)
-    pcall(function()
-        game:GetService("ReplicatedStorage"):WaitForChild("RemoteEvents"):WaitForChild("HakiRemote"):FireServer("Toggle")
-    end)
-end)
-
--- 4.1c TOGGLE: OBS HAKI
-addToggle("👁️ Obs Haki", false, function(state)
-    pcall(function()
-        game:GetService("ReplicatedStorage"):WaitForChild("RemoteEvents"):WaitForChild("ObservationHakiRemote"):FireServer("Toggle")
-    end)
-end)
-
--- 4.1d TOGGLE: MAKE GAME SMOOTHER
-addToggle("🚀 Make Game Smoother", false, function(state)
-    pcall(function()
-        local settingsRemote = game:GetService("ReplicatedStorage"):WaitForChild("RemoteEvents"):WaitForChild("SettingsToggle")
-        local toggles = {
-            {"MuteMusic", state},
-            {"MuteSFX", state},
-            {"DisableVFX", state},
-            {"DisableCutscene", state},
-            {"DisableOtherVFX", state},
-            {"RemoveTexture", state},
-            {"RemoveShadows", state},
-        }
-        for _, t in ipairs(toggles) do
-            settingsRemote:FireServer(t[1], t[2])
-        end
-
-        -- Set Roblox graphics: Manual mode + Quality 1
-        local settings = UserSettings():GetService("UserGameSettings")
-        settings.SavedQualityLevel = Enum.SavedQualitySetting.QualityLevel1
-        settings.GraphicsQualityLevel = 1
-        sethiddenproperty(settings, "GraphicsOptimizationMode", 1)
-    end)
-end)
-
--- 4.2 DROPDOWN: VŨ KHÍ
-local weaponDropdown = addDropdown("⚔️ Weapon Mode", {"Melee", "Fruit"}, "Melee", function(val)
-    getgenv().WeaponMode = val
-end)
-
--- 4.2b DROPDOWN: SKILL (Z/X/C/V/F)
-local skillOptions = {"None", "[Z] Skill 1", "[X] Skill 2", "[C] Skill 3", "[V] Skill 4", "[F] Skill 5"}
-local skillMap = {
-    ["None"] = 0,
-    ["[Z] Skill 1"] = 1,
-    ["[X] Skill 2"] = 2,
-    ["[C] Skill 3"] = 3,
-    ["[V] Skill 4"] = 4,
-    ["[F] Skill 5"] = 5,
-}
-local skillDropdown = addDropdown("🔥 Spam Skill", skillOptions, "None", function(val)
-    getgenv().SelectedSkill = skillMap[val] or 0
-end)
-
--- 4.3 DROPDOWN: CHỌN QUÁI
-buildMobDatabase()
-local mobNames = {"Auto (theo Level)"}
-for _, mob in ipairs(MobDatabase) do
-    table.insert(mobNames, string.format("[Lv.%d] %s", mob.level, mob.name))
-end
-
-local mobDropdown = addDropdown("👾 Chọn Quái (Level thấp → cao)", mobNames, "Auto (theo Level)", function(val)
-    if val == "Auto (theo Level)" then
-        getgenv().SelectedMob = nil
-    else
-        -- Parse tên mob từ "[Lv.X] MobName"
-        local mobName = val:match("%] (.+)$")
-        getgenv().SelectedMob = mobName
-    end
-end)
-
--- 4.4 NÚT REFRESH MOB LIST
-nextY = nextY + 4
-local refreshBtn = create("TextButton", {
-    Size = UDim2.new(1, 0, 0, 28),
-    Position = UDim2.new(0, 0, 0, nextY),
-    BackgroundColor3 = Color3.fromRGB(50, 50, 80),
-    Text = "🔄 Refresh Mob List",
-    TextColor3 = Color3.fromRGB(180, 180, 220),
-    TextSize = 12,
-    Font = Enum.Font.GothamSemibold,
-    BorderSizePixel = 0,
-    Parent = contentFrame,
-    Children = { create("UICorner", { CornerRadius = UDim.new(0, 6) }) }
-})
-nextY = nextY + 34
-
-refreshBtn.MouseButton1Click:Connect(function()
-    buildMobDatabase()
-    local newNames = {"Auto (theo Level)"}
-    for _, mob in ipairs(MobDatabase) do
-        table.insert(newNames, string.format("[Lv.%d] %s", mob.level, mob.name))
-    end
-    mobDropdown.setOptions(newNames)
-    mobDropdown.setSelected("Auto (theo Level)")
-    getgenv().SelectedMob = nil
-end)
-
--- 4.5 STATUS LABEL
-nextY = nextY + 4
-addLabel("📊 Status")
-local statusLabel = create("TextLabel", {
-    Size = UDim2.new(1, 0, 0, 60),
-    Position = UDim2.new(0, 0, 0, nextY),
-    BackgroundColor3 = Color3.fromRGB(25, 25, 40),
-    TextColor3 = Color3.fromRGB(130, 255, 160),
-    Text = "Sẵn sàng. Bật Auto Farm để bắt đầu.",
-    TextSize = 11,
-    Font = Enum.Font.GothamSemibold,
-    TextWrapped = true,
-    TextXAlignment = Enum.TextXAlignment.Left,
-    TextYAlignment = Enum.TextYAlignment.Top,
-    BorderSizePixel = 0,
-    Parent = contentFrame,
-    Children = {
-        create("UICorner", { CornerRadius = UDim.new(0, 6) }),
-        create("UIPadding", { PaddingLeft = UDim.new(0, 6), PaddingTop = UDim.new(0, 4) }),
-    }
-})
-
-local function setStatus(text)
-    statusLabel.Text = text
-end
-
--- ==========================================
--- 5. HÀM TÌM QUEST PHÙ HỢP THEO LEVEL
--- ==========================================
+-- ══════════════════════════════════════════
+-- 3. QUEST SYSTEM
+-- ══════════════════════════════════════════
 local function getTargetQuest()
     local level        = player.Data.Level.Value
     local bestNPC      = nil
@@ -604,9 +193,9 @@ local function getTargetQuest()
     return bestNPC, maxLevelFound, choosenpc
 end
 
--- ==========================================
--- 6. ISLAND LEARNING & TELEPORT
--- ==========================================
+-- ══════════════════════════════════════════
+-- 4. ISLAND LEARNING & TELEPORT
+-- ══════════════════════════════════════════
 local autoLevelRanges = {}
 local hasLearned = false
 
@@ -659,18 +248,16 @@ local function teleportToIsland(currentLevel)
     end)
 
     if success then
-        setStatus("🚀 Dịch chuyển đến: " .. portalArg)
         task.wait(2)
         hasLearned = false
         autoLearnIslandLevels()
-        -- Refresh mob list sau khi chuyển đảo
         buildMobDatabase()
     end
 end
 
--- ==========================================
--- 7. TÌM QUÁI VÀ TWEEN
--- ==========================================
+-- ══════════════════════════════════════════
+-- 5. FIND MOB & TWEEN
+-- ══════════════════════════════════════════
 local tweenInfo = TweenInfo.new(0.5)
 
 local function findMob(targetName)
@@ -686,13 +273,12 @@ local function findMob(targetName)
     for _, npc in ipairs(npcFolder:GetChildren()) do
         if npc:IsA("Model") and npc:FindFirstChild("HumanoidRootPart") then
             local humanoid = npc:FindFirstChildOfClass("Humanoid")
-            -- Chỉ chọn mob còn sống
             if humanoid and humanoid.Health > 0 then
                 local match = false
                 if targetName then
                     match = (npc.Name == targetName)
                 else
-                    match = true -- Auto mode: bất kỳ mob nào
+                    match = true
                 end
 
                 if match then
@@ -723,9 +309,9 @@ local function tweenToMob(mob)
     tween:Play()
 end
 
--- ==========================================
--- 8. WEAPON / ATTACK SYSTEM
--- ==========================================
+-- ══════════════════════════════════════════
+-- 6. WEAPON / ATTACK SYSTEM
+-- ══════════════════════════════════════════
 local function equipWeapon()
     local char = player.Character
     if not char then return nil end
@@ -734,19 +320,17 @@ local function equipWeapon()
 
     local mode = getgenv().WeaponMode
 
-    -- Tìm tool phù hợp
     local function findTool(searchIn)
         for _, item in ipairs(searchIn:GetChildren()) do
             if item:IsA("Tool") then
                 if mode == "Melee" then
-                    -- Tìm kiếm sword/melee theo tên hoặc attribute
-                    local nameLower = item.Name:lower()
-                    if nameLower:find("sword") or nameLower:find("blade") or nameLower:find("katana") or nameLower:find("cutlass") or nameLower:find("melee") then
+                    local n = item.Name:lower()
+                    if n:find("sword") or n:find("blade") or n:find("katana") or n:find("cutlass") or n:find("melee") then
                         return item
                     end
                 elseif mode == "Fruit" then
-                    local nameLower = item.Name:lower()
-                    if nameLower:find("fruit") or nameLower:find("devil") or nameLower:find("power") or nameLower:find("ability") then
+                    local n = item.Name:lower()
+                    if n:find("fruit") or n:find("devil") or n:find("power") or n:find("ability") then
                         return item
                     end
                 end
@@ -755,18 +339,16 @@ local function equipWeapon()
         return nil
     end
 
-    -- Kiểm tra đã equip chưa
     local equipped = findTool(char)
     if equipped then return equipped end
 
-    -- Tìm trong backpack và equip
     local tool = findTool(backpack)
     if tool then
         tool.Parent = char
         return tool
     end
 
-    -- Fallback: equip tool đầu tiên tìm thấy
+    -- Fallback: equip tool đầu tiên
     for _, item in ipairs(backpack:GetChildren()) do
         if item:IsA("Tool") then
             item.Parent = char
@@ -781,20 +363,14 @@ local function autoAttack(mob)
     if not mob or not mob:FindFirstChild("HumanoidRootPart") then return end
 
     local tool = equipWeapon()
-
-    -- Equip tool nếu có
     if tool then
-        pcall(function()
-            tool:Activate()
-        end)
+        pcall(function() tool:Activate() end)
     end
 
-    -- Fire RequestHit remote (đúng path của Sailor Piece)
     pcall(function()
         RepStorage:WaitForChild("CombatSystem"):WaitForChild("Remotes"):WaitForChild("RequestHit"):FireServer()
     end)
 
-    -- Fire RequestAbility nếu chọn skill (1-5 = Z/X/C/V/F)
     local skillId = getgenv().SelectedSkill
     if skillId and skillId > 0 then
         pcall(function()
@@ -803,9 +379,333 @@ local function autoAttack(mob)
     end
 end
 
--- ==========================================
--- 9. VÒNG LẶP FARM CHÍNH
--- ==========================================
+-- ══════════════════════════════════════════
+-- 7. NovaLib UI
+-- ══════════════════════════════════════════
+local Nova = loadstring(game:HttpGet("https://raw.githubusercontent.com/jachvn112-droid/sailor-piece-script/main/NovaLib.luau"))()
+
+local GUI = Nova:Create({
+    Name = "⚓ Sailor Piece Hub v3",
+    Theme = Nova.Themes.Ocean,
+    Size = UDim2.fromOffset(640, 440),
+})
+
+-- ── Status label (cập nhật liên tục) ──
+local statusText = "Sẵn sàng. Bật Auto Farm để bắt đầu."
+local function setStatus(text)
+    statusText = text
+end
+
+-- ─────────────────────────────────────────
+-- TAB 1: 🏠 Main — Farm Controls
+-- ─────────────────────────────────────────
+local MainTab = GUI:Tab({ Name = "🏠 Main" })
+
+MainTab:Section("⚔️ Auto Farm")
+
+MainTab:Toggle({
+    Name = "Auto Farm Quest",
+    Default = false,
+    Callback = function(state)
+        getgenv().IsFarm = state
+        if state then
+            setStatus("🟢 Auto Farm đang chạy...")
+        else
+            setStatus("⏸️ Auto Farm đã tắt.")
+        end
+    end,
+})
+
+MainTab:Toggle({
+    Name = "⬛ Auto Haki",
+    Default = false,
+    Callback = function(state)
+        pcall(function()
+            RepStorage:WaitForChild("RemoteEvents"):WaitForChild("HakiRemote"):FireServer("Toggle")
+        end)
+    end,
+})
+
+MainTab:Toggle({
+    Name = "👁️ Obs Haki",
+    Default = false,
+    Callback = function(state)
+        pcall(function()
+            RepStorage:WaitForChild("RemoteEvents"):WaitForChild("ObservationHakiRemote"):FireServer("Toggle")
+        end)
+    end,
+})
+
+MainTab:Toggle({
+    Name = "🚀 Make Game Smoother",
+    Default = false,
+    Callback = function(state)
+        pcall(function()
+            local settingsRemote = RepStorage:WaitForChild("RemoteEvents"):WaitForChild("SettingsToggle")
+            local toggles = {
+                {"MuteMusic", state},
+                {"MuteSFX", state},
+                {"DisableVFX", state},
+                {"DisableCutscene", state},
+                {"DisableOtherVFX", state},
+                {"RemoveTexture", state},
+                {"RemoveShadows", state},
+            }
+            for _, t in ipairs(toggles) do
+                settingsRemote:FireServer(t[1], t[2])
+            end
+            local settings = UserSettings():GetService("UserGameSettings")
+            settings.SavedQualityLevel = Enum.SavedQualitySetting.QualityLevel1
+            settings.GraphicsQualityLevel = 1
+            sethiddenproperty(settings, "GraphicsOptimizationMode", 1)
+        end)
+    end,
+})
+
+MainTab:Section("🎯 Target Selection")
+
+MainTab:Dropdown({
+    Name = "⚔️ Weapon Mode",
+    Items = {"Melee", "Fruit"},
+    Callback = function(val)
+        getgenv().WeaponMode = val
+    end,
+})
+
+local skillOptions = {"None", "[Z] Skill 1", "[X] Skill 2", "[C] Skill 3", "[V] Skill 4", "[F] Skill 5"}
+local skillMap = {
+    ["None"] = 0,
+    ["[Z] Skill 1"] = 1,
+    ["[X] Skill 2"] = 2,
+    ["[C] Skill 3"] = 3,
+    ["[V] Skill 4"] = 4,
+    ["[F] Skill 5"] = 5,
+}
+
+MainTab:Dropdown({
+    Name = "🔥 Spam Skill",
+    Items = skillOptions,
+    Callback = function(val)
+        getgenv().SelectedSkill = skillMap[val] or 0
+    end,
+})
+
+-- Mob dropdown (auto-populated)
+buildMobDatabase()
+local mobNames = {"Auto (theo Level)"}
+for _, mob in ipairs(MobDatabase) do
+    table.insert(mobNames, string.format("[Lv.%d] %s", mob.level, mob.name))
+end
+
+MainTab:Dropdown({
+    Name = "👾 Chọn Quái",
+    Items = mobNames,
+    Callback = function(val)
+        if val == "Auto (theo Level)" then
+            getgenv().SelectedMob = nil
+        else
+            local mobName = val:match("%] (.+)$")
+            getgenv().SelectedMob = mobName
+        end
+    end,
+})
+
+MainTab:Slider({
+    Name = "⏱️ Attack Cooldown (ms)",
+    Min = 100,
+    Max = 1000,
+    Default = 300,
+    Callback = function(val)
+        getgenv().AttackCooldown = val / 1000
+    end,
+})
+
+-- ─────────────────────────────────────────
+-- TAB 2: 🌊 Teleport
+-- ─────────────────────────────────────────
+local TeleportTab = GUI:Tab({ Name = "🌊 Teleport" })
+
+TeleportTab:Section("🏝️ Island Teleport")
+
+-- Dynamic island list từ TravelConfig
+local islandList = {}
+pcall(function()
+    if checkmap.Islands then
+        for islandName, _ in pairs(checkmap.Islands) do
+            table.insert(islandList, islandName)
+        end
+    elseif checkmap.Zones then
+        for zoneName, _ in pairs(checkmap.Zones) do
+            table.insert(islandList, zoneName)
+        end
+    end
+end)
+
+-- Fallback nếu không đọc được từ config
+if #islandList == 0 then
+    islandList = {"StarterIsland", "Island1", "Island2", "Island3", "Island4", "Island5"}
+end
+
+table.sort(islandList)
+
+for _, islandName in ipairs(islandList) do
+    TeleportTab:Button({
+        Name = "🏝️ " .. islandName,
+        Callback = function()
+            pcall(function()
+                local portalArg = islandName:gsub("Island", ""):gsub(" ", "")
+                RepStorage:WaitForChild("Remotes"):WaitForChild("TeleportToPortal"):FireServer(portalArg)
+            end)
+            setStatus("🚀 Teleporting to: " .. islandName)
+        end,
+    })
+end
+
+TeleportTab:Section("🔄 Mob List")
+
+TeleportTab:Button({
+    Name = "🔄 Refresh Mob List",
+    Callback = function()
+        buildMobDatabase()
+        local count = #MobDatabase
+        setStatus(string.format("✅ Refreshed! Found %d mob types.", count))
+        for _, mob in ipairs(MobDatabase) do
+            print(string.format("  [Lv.%d] %s @ %s", mob.level, mob.name, mob.island))
+        end
+    end,
+})
+
+-- ─────────────────────────────────────────
+-- TAB 3: 📊 Info
+-- ─────────────────────────────────────────
+local InfoTab = GUI:Tab({ Name = "📊 Info" })
+
+InfoTab:Section("📋 Quest → Mob Map")
+
+-- Show quest mapping
+for npcName, data in pairs(questcheck.RepeatableQuests) do
+    local req = data.requirements and data.requirements[1]
+    local mobType = req and req.npcType or "???"
+    local amount  = req and req.amount or "?"
+    local lvl     = data.recommendedLevel or "?"
+
+    InfoTab:Button({
+        Name = string.format("Lv.%s | %s → Kill %s x%s", tostring(lvl), npcName, mobType, tostring(amount)),
+        Callback = function()
+            -- Bấm để chọn quest này
+            getgenv().SelectedMob = mobType
+            setStatus("🎯 Manual target: " .. mobType)
+        end,
+    })
+end
+
+InfoTab:Section("📊 Player Stats")
+
+InfoTab:Button({
+    Name = "📊 Show Current Stats",
+    Callback = function()
+        local lvl = "?"
+        pcall(function() lvl = player.Data.Level.Value end)
+        local bestNPC, bestLvl, bestMob = getTargetQuest()
+        print("══════════════════════════════════")
+        print("📊 Player Level: " .. tostring(lvl))
+        print("🎯 Best Quest NPC: " .. tostring(bestNPC))
+        print("🎯 Quest Level: " .. tostring(bestLvl))
+        print("👾 Target Mob: " .. tostring(bestMob))
+        print("⚔️ Weapon: " .. getgenv().WeaponMode)
+        print("🔥 Skill: " .. tostring(getgenv().SelectedSkill))
+        print("══════════════════════════════════")
+        setStatus(string.format("Lv.%s | Quest: %s → %s", tostring(lvl), tostring(bestNPC), tostring(bestMob)))
+    end,
+})
+
+-- ─────────────────────────────────────────
+-- TAB 4: ⚙️ Settings
+-- ─────────────────────────────────────────
+local SettingsTab = GUI:Tab({ Name = "⚙️ Settings" })
+
+SettingsTab:Section("🔧 Config")
+
+SettingsTab:Keybind({
+    Name = "Toggle Farm Hotkey",
+    Key = Enum.KeyCode.F2,
+    OnPress = function()
+        getgenv().IsFarm = not getgenv().IsFarm
+        if getgenv().IsFarm then
+            setStatus("🟢 Auto Farm ON (F2)")
+        else
+            setStatus("⏸️ Auto Farm OFF (F2)")
+        end
+    end,
+})
+
+SettingsTab:Toggle({
+    Name = "Anti-AFK",
+    Default = true,
+    Callback = function(state)
+        if state then
+            -- Anti-AFK: giữ connection
+            task.spawn(function()
+                while getgenv()._antiAFK do
+                    task.wait(60)
+                    pcall(function()
+                        local vu = game:GetService("VirtualUser")
+                        vu:Button2Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+                        task.wait(1)
+                        vu:Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+                    end)
+                end
+            end)
+            getgenv()._antiAFK = true
+        else
+            getgenv()._antiAFK = false
+        end
+    end,
+})
+
+SettingsTab:Section("📝 Debug")
+
+SettingsTab:Button({
+    Name = "🗺️ Print All Quest Data",
+    Callback = function()
+        print("\n═══ FULL QUEST CONFIG DUMP ═══")
+        for npcName, data in pairs(questcheck.RepeatableQuests) do
+            print(string.format("\n[%s] Level: %s", npcName, tostring(data.recommendedLevel)))
+            if data.requirements then
+                for i, req in ipairs(data.requirements) do
+                    print(string.format("  Requirement %d: Kill '%s' x%s", i, tostring(req.npcType), tostring(req.amount)))
+                end
+            end
+        end
+        print("═══ END DUMP ═══\n")
+    end,
+})
+
+SettingsTab:Button({
+    Name = "👾 Print All Mobs in Map",
+    Callback = function()
+        local npcFolder = workspace:FindFirstChild("NPCs")
+        if not npcFolder then
+            print("❌ workspace.NPCs not found!")
+            return
+        end
+        print("\n═══ ALL MOBS IN workspace.NPCs ═══")
+        local seen = {}
+        for _, npc in ipairs(npcFolder:GetChildren()) do
+            if npc:IsA("Model") and not seen[npc.Name] then
+                seen[npc.Name] = true
+                local hum = npc:FindFirstChildOfClass("Humanoid")
+                local hp  = hum and string.format("HP: %d/%d", hum.Health, hum.MaxHealth) or "no Humanoid"
+                print(string.format("  %s — %s", npc.Name, hp))
+            end
+        end
+        print("═══ END MOBS ═══\n")
+    end,
+})
+
+-- ══════════════════════════════════════════
+-- 8. MAIN FARM LOOP
+-- ══════════════════════════════════════════
 task.spawn(function()
     autoLearnIslandLevels()
 
@@ -813,7 +713,6 @@ task.spawn(function()
         task.wait(0.1)
 
         if not getgenv().IsFarm then
-            setStatus("⏸️ Auto Farm đã tắt.")
             task.wait(0.5)
             continue
         end
@@ -837,7 +736,6 @@ task.spawn(function()
         local targetNPC, _, choosenpc
 
         if not targetMobName then
-            -- Auto mode: chọn quest phù hợp level
             targetNPC, _, choosenpc = getTargetQuest()
             targetMobName = choosenpc
         end
@@ -848,7 +746,7 @@ task.spawn(function()
             continue
         end
 
-        -- Nhận quest nếu có (auto mode)
+        -- Nhận quest nếu auto mode
         if targetNPC then
             pcall(function()
                 RepStorage.RemoteEvents.QuestAccept:FireServer(targetNPC)
@@ -861,9 +759,8 @@ task.spawn(function()
         if mob then
             local mobHumanoid = mob:FindFirstChildOfClass("Humanoid")
             if mobHumanoid and mobHumanoid.Health > 0 then
-                -- Cập nhật status
                 setStatus(string.format(
-                    "⚔️ Farm: %s (HP: %d/%d)\n📍 Distance: %d studs\n🗡️ Mode: %s",
+                    "⚔️ Farm: %s (HP: %d/%d) | Dist: %d | %s",
                     mob.Name,
                     mobHumanoid.Health,
                     mobHumanoid.MaxHealth,
@@ -875,20 +772,17 @@ task.spawn(function()
                 tweenToMob(mob)
                 task.wait(0.2)
 
-                -- Auto attack liên tục cho đến khi mob chết hoặc mất
+                -- Attack loop
                 while getgenv().IsFarm and mob and mob.Parent and mob:FindFirstChild("HumanoidRootPart") do
                     local h = mob:FindFirstChildOfClass("Humanoid")
                     if not h or h.Health <= 0 then break end
 
-                    tweenToMob(mob) -- Bám sát mob
+                    tweenToMob(mob)
                     autoAttack(mob)
 
                     setStatus(string.format(
-                        "⚔️ Đang đánh: %s\n❤️ HP: %d/%d\n🗡️ Mode: %s",
-                        mob.Name,
-                        h.Health,
-                        h.MaxHealth,
-                        getgenv().WeaponMode
+                        "⚔️ Đang đánh: %s | ❤️ %d/%d | 🗡️ %s",
+                        mob.Name, h.Health, h.MaxHealth, getgenv().WeaponMode
                     ))
 
                     task.wait(getgenv().AttackCooldown)
@@ -898,8 +792,8 @@ task.spawn(function()
                 task.wait(0.3)
             end
         else
-            -- Không tìm thấy mob → dịch chuyển đảo
-            setStatus("🔍 Không thấy " .. targetMobName .. "\n🚀 Đang chuyển đảo...")
+            -- Không tìm thấy mob → chuyển đảo
+            setStatus("🔍 Không thấy " .. targetMobName .. " → Đang chuyển đảo...")
             local currentLevel = player.Data.Level.Value
             teleportToIsland(currentLevel)
             task.wait(1)
@@ -907,21 +801,26 @@ task.spawn(function()
     end
 end)
 
--- ==========================================
--- 10. HOTKEY: TOGGLE FARM (F2)
--- ==========================================
-UIS.InputBegan:Connect(function(input, gpe)
-    if gpe then return end
-    if input.KeyCode == Enum.KeyCode.F2 then
-        getgenv().IsFarm = not getgenv().IsFarm
-        -- Sync UI button (tìm button toggle)
-        for _, child in ipairs(contentFrame:GetChildren()) do
-            if child:IsA("TextButton") and child.Text:find("Auto Farm") then
-                child.BackgroundColor3 = getgenv().IsFarm and Color3.fromRGB(40, 120, 60) or Color3.fromRGB(120, 40, 40)
-                child.Text = "Auto Farm" .. (getgenv().IsFarm and "  ✅ ON" or "  ❌ OFF")
-            end
+-- ══════════════════════════════════════════
+-- 9. STATUS UPDATER (in trạng thái lên console)
+-- ══════════════════════════════════════════
+task.spawn(function()
+    local lastStatus = ""
+    while task.wait(2) do
+        if statusText ~= lastStatus then
+            lastStatus = statusText
+            print("[Status] " .. statusText)
         end
     end
 end)
 
-print("✅ AutoFarm Sailor Piece v2 loaded! (F2 toggle | UI bên trái)")
+-- ══════════════════════════════════════════
+-- NOTIFICATION
+-- ══════════════════════════════════════════
+GUI:Notify({
+    Title = "✦ Sailor Piece Hub v3",
+    Text = "Loaded! F2 = Toggle Farm | NovaLib UI",
+    Duration = 5,
+})
+
+print("✅ Sailor Piece Hub v3 loaded! (NovaLib UI | F2 toggle)")
