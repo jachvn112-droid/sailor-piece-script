@@ -293,7 +293,7 @@ minBtn.MouseButton1Click:Connect(function()
         mainFrame.Size = UDim2.new(0, 280, 0, 40)
         minBtn.Text = "+"
     else
-        mainFrame.Size = UDim2.new(0, 280, 0, 520)
+        mainFrame.Size = UDim2.new(0, 280, 0, 560)
         minBtn.Text = "—"
     end
 end)
@@ -464,6 +464,31 @@ end)
 addToggle("👁️ Obs Haki", false, function(state)
     pcall(function()
         game:GetService("ReplicatedStorage"):WaitForChild("RemoteEvents"):WaitForChild("ObservationHakiRemote"):FireServer("Toggle")
+    end)
+end)
+
+-- 4.1d TOGGLE: MAKE GAME SMOOTHER
+addToggle("🚀 Make Game Smoother", false, function(state)
+    pcall(function()
+        local settingsRemote = game:GetService("ReplicatedStorage"):WaitForChild("RemoteEvents"):WaitForChild("SettingsToggle")
+        local toggles = {
+            {"MuteMusic", state},
+            {"MuteSFX", state},
+            {"DisableVFX", state},
+            {"DisableCutscene", state},
+            {"DisableOtherVFX", state},
+            {"RemoveTexture", state},
+            {"RemoveShadows", state},
+        }
+        for _, t in ipairs(toggles) do
+            settingsRemote:FireServer(t[1], t[2])
+        end
+
+        -- Set Roblox graphics: Manual mode + Quality 1
+        local settings = UserSettings():GetService("UserGameSettings")
+        settings.SavedQualityLevel = Enum.SavedQualitySetting.QualityLevel1
+        settings.GraphicsQualityLevel = 1
+        sethiddenproperty(settings, "GraphicsOptimizationMode", 1)
     end)
 end)
 
