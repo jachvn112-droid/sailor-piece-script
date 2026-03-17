@@ -1,6 +1,6 @@
 --[[
     ╔══════════════════════════════════════════════╗
-    ║     SAILOR PIECE - TELEPORT BYPASS v2        ║
+    ║     SAILOR PIECE - TELEPORT BYPASS v3        ║
     ║   Chạy script này TRƯỚC khi chạy autofarm   ║
     ╚══════════════════════════════════════════════╝
     
@@ -12,6 +12,7 @@
     5) Anti-idle: không bị kick AFK
     6) Fake velocity: giả lập di chuyển tự nhiên
     7) Hook position replication
+    8) ★ BYPASS RENDER DISTANCE: Force load NPCs ở mọi khoảng cách
 ]]
 
 -- ═══════════════ SERVICES ═══════════════
@@ -27,7 +28,7 @@ getgenv().AntiVoid      = true
 getgenv().AntiIdle      = true
 
 warn("═══════════════════════════════════════")
-warn("  [BYPASS] Sailor Piece Teleport Bypass v2")
+warn("  [BYPASS] Sailor Piece Teleport Bypass v3")
 warn("═══════════════════════════════════════")
 
 -- ════════════════════════════════════
@@ -316,10 +317,166 @@ task.spawn(function()
 end)
 
 -- ════════════════════════════════════
+-- 11. ★ BYPASS RENDER DISTANCE / STREAMING
+-- ════════════════════════════════════
+-- ĐÂY LÀ LÝ DO CHÍNH: Game dùng StreamingEnabled nên
+-- NPCs ở xa không được load về client → findMob() trả về nil
+-- Fix: dùng ReplicationFocus + sethiddenproperty để force load
+
+local _focusPart = nil
+
+local function setupRenderBypass()
+    -- 1) Thử tắt StreamingEnabled (thường bị server-lock nhưng đáng thử)
+    pcall(function()
+        workspace.StreamingEnabled = false
+    end)
+    
+    -- 2) sethiddenproperty: Tăng bán kính streaming lên tối đa
+    if sethiddenproperty then
+        pcall(function()
+            sethiddenproperty(workspace, "StreamingMinRadius", 10000)
+        end)
+        pcall(function()
+            sethiddenproperty(workspace, "StreamingTargetRadius", 10000)
+        end)
+        pcall(function()
+            sethiddenproperty(workspace, "StreamingPauseMode", 0) -- Disabled
+        end)
+        warn("[BYPASS] ✅ Set StreamingMinRadius/TargetRadius = 10000")
+    else
+        warn("[BYPASS] ⚠️ sethiddenproperty không có, thử cách khác...")
+    end
+    
+    -- 3) MaximumSimulationRadius = tối đa
+    pcall(function()
+        player.MaximumSimulationRadius = math.huge
+    end)
+    pcall(function()
+        player.SimulationRadius = math.huge
+    end)
+    warn("[BYPASS] ✅ SimulationRadius = math.huge")
+    
+    -- 4) Tạo focus part cho ReplicationFocus
+    _focusPart = Instance.new("Part")
+    _focusPart.Name = "__BypassFocus"
+    _focusPart.Anchored = true
+    _focusPart.CanCollide = false
+    _focusPart.Transparency = 1
+    _focusPart.Size = Vector3.new(1, 1, 1)
+    _focusPart.Parent = workspace
+end
+
+-- Hàm set focus tới 1 vị trí bất kỳ để server stream data ở đó
+-- Autofarm gọi hàm này trước khi tìm mob
+getgenv().SetRenderFocus = function(position)
+    if not _focusPart then return end
+    
+    if typeof(position) == "CFrame" then
+        _focusPart.CFrame = position
+    elseif typeof(position) == "Vector3" then
+        _focusPart.CFrame = CFrame.new(position)
+    end
+    
+    pcall(function()
+        player.ReplicationFocus = _focusPart
+    end)
+end
+
+-- Hàm reset focus về nhân vật (khi đã tìm thấy mob)
+getgenv().ResetRenderFocus = function()
+    pcall(function()
+        player.ReplicationFocus = nil
+    end)
+end
+
+-- Auto-setup render bypass
+setupRenderBypass()
+
+-- Loop liên tục giữ SimulationRadius + cập nhật focus
+task.spawn(function()
+    while task.wait(1) do
+        pcall(function()
+            player.MaximumSimulationRadius = math.huge
+            player.SimulationRadius = math.huge
+        end)
+        
+        -- Nếu chưa ai set focus, focus vào vị trí nhân vật
+        if _focusPart and not player.ReplicationFocus then
+            local char = player.Character
+            local root = char and char:FindFirstChild("HumanoidRootPart")
+            if root then
+                _focusPart.CFrame = root.CFrame
+            end
+        end
+        
+        -- Thử set lại streaming radius mỗi giây (đề phòng game reset)
+        if sethiddenproperty then
+            pcall(function()
+                sethiddenproperty(workspace, "StreamingMinRadius", 10000)
+                sethiddenproperty(workspace, "StreamingTargetRadius", 10000)
+            end)
+        end
+    end
+end)
+
+-- Pre-load NPCs folder bằng cách request streaming
+task.spawn(function()
+    task.wait(3)
+    -- Quét tất cả các đảo trong workspace để force stream
+    for _, child in ipairs(workspace:GetChildren()) do
+        if child:IsA("Model") or child:IsA("Folder") then
+            local n = child.Name:lower()
+            if n:find("island") or n:find("spawn") or n:find("map") or n:find("npc") then
+                pcall(function()
+                    -- Touch từng child để force replication
+                    for _, sub in ipairs(child:GetDescendants()) do
+                        if sub:IsA("BasePart") then
+                            local _ = sub.Position
+                        end
+                    end
+                end)
+            end
+        end
+    end
+    
+    -- Focus tới NPCs folder nếu có
+    local npcsFolder = workspace:FindFirstChild("NPCs") or workspace:FindFirstChild("Npcs")
+    if npcsFolder then
+        warn("[BYPASS] ✅ NPCs folder tìm thấy: " .. tostring(#npcsFolder:GetChildren()) .. " mobs")
+        for _, npc in ipairs(npcsFolder:GetChildren()) do
+            -- Force stream mỗi NPC
+            pcall(function()
+                local root = npc:FindFirstChild("HumanoidRootPart") or npc:FindFirstChild("Head")
+                if root and _focusPart then
+                    _focusPart.CFrame = root.CFrame
+                    player.ReplicationFocus = _focusPart
+                    task.wait(0.05)
+                end
+            end)
+        end
+        -- Reset focus
+        pcall(function()
+            player.ReplicationFocus = nil
+        end)
+        warn("[BYPASS] ✅ Đã force-stream " .. tostring(#npcsFolder:GetChildren()) .. " NPCs")
+    else
+        warn("[BYPASS] ⚠️ Không tìm thấy NPCs folder - sẽ thử lại khi autofarm chạy")
+    end
+end)
+
+warn("[BYPASS] ✅ Render distance bypass LOADED")
+
+-- Re-apply render bypass khi respawn
+player.CharacterAdded:Connect(function()
+    task.wait(2)
+    setupRenderBypass()
+end)
+
+-- ════════════════════════════════════
 -- SUMMARY
 -- ════════════════════════════════════
 warn("═══════════════════════════════════════")
-warn("  [BYPASS] ✅ TẤT CẢ BYPASS ĐÃ LOADED!")
+warn("  [BYPASS] ✅ TẤT CẢ BYPASS ĐÃ LOADED! (v3)")
 warn("  • Anti-kick: ON")
 warn("  • Anti-teleport-back: ON") 
 warn("  • Anti-cheat GC hook: ON")
@@ -329,6 +486,9 @@ warn("  • Anti-void: ON")
 warn("  • Anti-idle: ON")
 warn("  • Remote scanner: ON")
 warn("  • Position spoof: ON")
+warn("  • ★ Render Distance Bypass: ON")
+warn("  • ★ ReplicationFocus: ON")
+warn("  • ★ StreamingRadius: 10000")
 warn("═══════════════════════════════════════")
 warn("  → Bây giờ hãy chạy autofarm script!")
 warn("═══════════════════════════════════════")
