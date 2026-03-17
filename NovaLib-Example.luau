@@ -6,7 +6,7 @@
 ]]
 
 -- Load thư viện
-local Nova = loadstring(game:HttpGet("YOUR_RAW_LINK_HERE"))()
+local Nova = loadstring(game:HttpGet("https://raw.githubusercontent.com/jachvn112-droid/sailor-piece-script/main/NovaLib.luau"))()
 -- Hoặc nếu dùng local: local Nova = require(path.to.NovaLib)
 
 -- Tạo GUI chính
