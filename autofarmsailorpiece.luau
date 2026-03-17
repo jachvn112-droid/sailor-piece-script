@@ -261,7 +261,19 @@ local function getPortalForLevel(lvl)
     return "StarterIsland"
 end
 
-local function teleportToIsland(currentLevel)
+local function teleportToIsland(currentLevel, targetMobName)
+    -- v4: Ưu tiên dùng scanner API từ bypass-teleport.luau
+    if targetMobName and getgenv().TeleportToMobIsland then
+        local ok = getgenv().TeleportToMobIsland(targetMobName)
+        if ok then
+            hasLearned = false
+            autoLearnIslandLevels()
+            buildMobDatabase()
+            return
+        end
+    end
+
+    -- Fallback: dùng level range cũ
     local targetPortal = getPortalForLevel(currentLevel)
     local portalArg = targetPortal:gsub("Island", ""):gsub(" ", "")
 
@@ -876,10 +888,10 @@ task.spawn(function()
                 task.wait(0.3)
             end
         else
-            -- Không tìm thấy mob → chuyển đảo
+            -- Không tìm thấy mob → chuyển đảo (v4: dùng scanner API)
             setStatus("🔍 Không thấy " .. targetMobName .. " → Đang chuyển đảo...")
             local currentLevel = player.Data.Level.Value
-            teleportToIsland(currentLevel)
+            teleportToIsland(currentLevel, targetMobName)
             task.wait(1)
         end
     end
