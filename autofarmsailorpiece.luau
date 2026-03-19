@@ -190,6 +190,7 @@ getgenv().MerchantItem   = nil
 
 -- ── Misc State ──
 getgenv().IsNoclip       = false
+getgenv().QuestMode      = false
 getgenv()._antiAFK       = true
 
 -- ── Auto Stats State ──
@@ -223,7 +224,7 @@ local _configDirty = false
 -- List of keys to save
 local CONFIG_KEYS = {
     -- Farm
-    "IsFarm", "SelectedMob", "WeaponMode", "AttackCooldown",
+    "IsFarm", "SelectedMob", "WeaponMode", "AttackCooldown", "QuestMode",
     "PlankMode", "FarmHeight", "FarmSpeed", "MoveMode",
     -- Skills
     "AutoSkills", "SkillCooldown",
@@ -1145,11 +1146,20 @@ local FarmTab = GUI:Tab({ Name = "🏠 Farm" })
 FarmTab:Section("⚔️ Auto Farm")
 
 toggleRefs.IsFarm = FarmTab:Toggle({
-    Name = "Auto Farm Quest",
+    Name = "Auto Farm",
     Default = false,
     Callback = function(state)
         getgenv().IsFarm = state
         setStatus(state and "🟢 Auto Farm ON" or "⏸️ Auto Farm OFF")
+        markConfigDirty()
+    end,
+})
+
+toggleRefs.QuestMode = FarmTab:Toggle({
+    Name = "📜 Quest Mode (auto-accept quests)",
+    Default = false,
+    Callback = function(state)
+        getgenv().QuestMode = state
         markConfigDirty()
     end,
 })
@@ -1850,7 +1860,7 @@ SettingsTab:Button({
 -- ══════════════════════════════════════════
 syncTogglesFromConfig = function()
     local mapping = {
-        IsFarm = "IsFarm", PlankMode = "PlankMode",
+        IsFarm = "IsFarm", PlankMode = "PlankMode", QuestMode = "QuestMode",
         IsBossFight = "IsBossFight", IsSummonBoss = "IsSummonBoss",
         IsAutoDungeon = "IsAutoDungeon", IsBossRush = "IsBossRush",
         IsDungeonQuest = "IsDungeonQuest", IsHogyokuQuest = "IsHogyokuQuest",
@@ -1941,21 +1951,29 @@ task.spawn(function()
         -- Priority 7: Auto Farm (default)
         if getgenv().IsFarm then
             local targetMobName = getgenv().SelectedMob
-            local targetNPC, _, choosenpc
+            local targetNPC
 
-            if not targetMobName then
-                targetNPC, _, choosenpc = getTargetQuest()
+            -- Quest mode: only if no mob selected AND quest mode is ON
+            if not targetMobName and getgenv().QuestMode then
+                local _npc, _, choosenpc = getTargetQuest()
+                targetNPC = _npc
                 targetMobName = choosenpc
             end
 
             if not targetMobName then
-                setStatus("❓ No mob found matching your level.")
-                task.wait(1)
-                continue
+                -- No mob selected + no quest mode = farm nearest mob
+                local nearestMob = findMob(nil)
+                if nearestMob then
+                    targetMobName = nearestMob.Name
+                else
+                    setStatus("❓ No mobs found nearby.")
+                    task.wait(1)
+                    continue
+                end
             end
 
-            -- Accept quest
-            if targetNPC then
+            -- Accept quest only if quest mode is on
+            if targetNPC and getgenv().QuestMode then
                 pcall(function()
                     RepStorage.RemoteEvents.QuestAccept:FireServer(targetNPC)
                 end)
