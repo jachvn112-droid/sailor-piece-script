@@ -813,18 +813,117 @@ end
 
 local function autoAttack(mob)
     if not mob or not mob:FindFirstChild("HumanoidRootPart") then return end
+    local char = player.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
 
+    local mobRoot = mob.HumanoidRootPart
+    local mobPos = mobRoot.Position
+    local mobCF = mobRoot.CFrame
+
+    -- ── 1. Equip weapon ──
     local tool = equipWeapon()
-    if tool then
-        pcall(function() tool:Activate() end)
-    end
 
+    -- ── 2. Spoof mouse to point at mob ──
     pcall(function()
-        local hitTarget = mob:FindFirstChild("HumanoidRootPart") or mob
-        RepStorage:WaitForChild("CombatSystem"):WaitForChild("Remotes"):WaitForChild("RequestHit"):FireServer(hitTarget)
+        local mouse = player:GetMouse()
+        if mouse then
+            -- Some games read mouse.Hit / mouse.Target for hitbox direction
+            -- We use hookmetamethod or direct hookfunction if available
+            if not getgenv()._mouseHooked and hookmetamethod then
+                local mt = getrawmetatable(mouse)
+                if mt then
+                    local oldIndex = mt.__index
+                    setreadonly(mt, false)
+                    mt.__index = newcclosure(function(self, key)
+                        if getgenv()._spoofMobTarget then
+                            if key == "Hit" then
+                                return getgenv()._spoofMobTarget
+                            elseif key == "Target" then
+                                return getgenv()._spoofMobPart
+                            end
+                        end
+                        return oldIndex(self, key)
+                    end)
+                    setreadonly(mt, true)
+                    getgenv()._mouseHooked = true
+                end
+            end
+            getgenv()._spoofMobTarget = mobCF
+            getgenv()._spoofMobPart = mobRoot
+        end
     end)
 
-    -- Individual skill spam
+    -- ── 3. Activate tool (multiple methods) ──
+    if tool then
+        -- Method A: Standard Activate
+        pcall(function() tool:Activate() end)
+
+        -- Method B: Fire click signal on tool (simulates mouse click on tool)
+        pcall(function()
+            if firesignal then
+                firesignal(tool.Activated)
+            end
+        end)
+
+        -- Method C: Fire remote inside the tool (some tools have their own RemoteEvent)
+        pcall(function()
+            for _, child in ipairs(tool:GetDescendants()) do
+                if child:IsA("RemoteEvent") then
+                    child:FireServer(mobRoot.Position)
+                elseif child:IsA("RemoteFunction") then
+                    child:InvokeServer(mobRoot.Position)
+                end
+            end
+        end)
+    end
+
+    -- ── 4. Virtual mouse click (simulates actual left click) ──
+    pcall(function()
+        local VIM = game:GetService("VirtualInputManager")
+        VIM:SendMouseButtonEvent(0, 0, 0, true, game, 1)  -- mouse down
+        task.wait(0.03)
+        VIM:SendMouseButtonEvent(0, 0, 0, false, game, 1) -- mouse up
+    end)
+
+    -- ── 5. Fire CombatSystem RequestHit with multiple arg patterns ──
+    pcall(function()
+        local requestHit = RepStorage:FindFirstChild("CombatSystem")
+            and RepStorage.CombatSystem:FindFirstChild("Remotes")
+            and RepStorage.CombatSystem.Remotes:FindFirstChild("RequestHit")
+        if requestHit then
+            -- Try different argument patterns (games vary)
+            pcall(function() requestHit:FireServer() end)
+            pcall(function() requestHit:FireServer(mobRoot) end)
+            pcall(function() requestHit:FireServer(mob) end)
+            pcall(function() requestHit:FireServer(mobPos) end)
+            pcall(function() requestHit:FireServer({Target = mob, Position = mobPos}) end)
+            pcall(function() requestHit:FireServer(mob, mobPos) end)
+        end
+    end)
+
+    -- ── 6. Also try other common combat remotes ──
+    pcall(function()
+        local cs = RepStorage:FindFirstChild("CombatSystem")
+        if cs then
+            local remotes = cs:FindFirstChild("Remotes")
+            if remotes then
+                for _, remote in ipairs(remotes:GetChildren()) do
+                    if remote:IsA("RemoteEvent") and remote.Name ~= "RequestHit" then
+                        pcall(function() remote:FireServer(mob) end)
+                        pcall(function() remote:FireServer(mobRoot) end)
+                    end
+                end
+            end
+        end
+    end)
+
+    -- ── 7. Clear mouse spoof after attack ──
+    task.defer(function()
+        getgenv()._spoofMobTarget = nil
+        getgenv()._spoofMobPart = nil
+    end)
+
+    -- ── 8. Skill spam ──
     local skillMap = { Z = 1, X = 2, C = 3, V = 4, F = 5 }
     for key, slot in pairs(skillMap) do
         if getgenv().AutoSkills[key] then
