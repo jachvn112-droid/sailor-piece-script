@@ -820,7 +820,8 @@ local function autoAttack(mob)
     end
 
     pcall(function()
-        RepStorage:WaitForChild("CombatSystem"):WaitForChild("Remotes"):WaitForChild("RequestHit"):FireServer()
+        local hitTarget = mob:FindFirstChild("HumanoidRootPart") or mob
+        RepStorage:WaitForChild("CombatSystem"):WaitForChild("Remotes"):WaitForChild("RequestHit"):FireServer(hitTarget)
     end)
 
     -- Individual skill spam
@@ -2021,6 +2022,13 @@ task.spawn(function()
 
                     tweenToMob(mob)
                     task.wait(0.2)
+
+                    -- Fire RequestHit on first approach to initialize combat
+                    pcall(function()
+                        local hitTarget = mob:FindFirstChild("HumanoidRootPart") or mob
+                        RepStorage:WaitForChild("CombatSystem"):WaitForChild("Remotes"):WaitForChild("RequestHit"):FireServer(hitTarget)
+                    end)
+                    equipWeapon()
 
                     while getgenv().IsFarm and mob and mob.Parent and mob:FindFirstChild("HumanoidRootPart") do
                         local h = mob:FindFirstChildOfClass("Humanoid")
