@@ -2,6 +2,7 @@ local NovaLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/jachv
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 local Player = Players.LocalPlayer
 
@@ -13,17 +14,25 @@ local Window = NovaLib:Create({
 local Tab = Window:Tab({ Name = "Auto Farm" })
 
 -- ═══════════════════════════════════════
--- MOB SETTINGS
+-- STATE
 -- ═══════════════════════════════════════
-Tab:Section("Mob Settings")
-
 local selectedMob = nil
 local autoFarmEnabled = false
+local autoEquipEnabled = false
+local selectedWeapon = nil
+local tweenSpeed = 100
+local farmDistance = 5
+local farmMode = "Behind" -- Behind / Above
 
--- Bảng map mob → quest NPC remote arg
+-- Bảng map mob → quest NPC
 local mobQuestMap = {
     ["Thief"] = "QuestNPC1",
 }
+
+-- ═══════════════════════════════════════
+-- MOB SETTINGS
+-- ═══════════════════════════════════════
+Tab:Section("Mob Settings")
 
 Tab:Dropdown({
     Name = "Select Mob",
@@ -52,7 +61,6 @@ Tab:Dropdown({
     end
 })
 
--- Toggle Auto Farm
 Tab:Toggle({
     Name = "Auto Farm",
     Default = false,
@@ -61,56 +69,45 @@ Tab:Toggle({
     end
 })
 
--- Hàm accept quest
-local function acceptQuest(questNPC)
-    pcall(function()
-        ReplicatedStorage:WaitForChild("RemoteEvents"):WaitForChild("QuestAccept"):FireServer(questNPC)
-    end)
-end
+-- ═══════════════════════════════════════
+-- FARM SETTINGS
+-- ═══════════════════════════════════════
+Tab:Section("Farm Settings")
 
--- Hàm check quest UI có đang hiện không
-local function isQuestActive()
-    local success, result = pcall(function()
-        local questUI = Player.PlayerGui:FindFirstChild("QuestUI")
-        if questUI then
-            local quest = questUI:FindFirstChild("Quest")
-            if quest then
-                return quest.Visible
-            end
-        end
-        return false
-    end)
-    if success then
-        return result
+Tab:Dropdown({
+    Name = "Farm Position",
+    Items = { "Behind", "Above" },
+    Callback = function(selected)
+        farmMode = selected
+        print("Farm mode: " .. selected)
     end
-    return false
-end
+})
 
--- Auto Farm loop: check quest + auto accept
-task.spawn(function()
-    while task.wait(0.5) do
-        if autoFarmEnabled and selectedMob then
-            local questNPC = mobQuestMap[selectedMob]
-            if questNPC then
-                -- Nếu quest UI không hiện (đã hoàn thành hoặc chưa nhận) → accept lại
-                if not isQuestActive() then
-                    acceptQuest(questNPC)
-                    task.wait(1) -- đợi server xử lý
-                end
-            end
-        end
+Tab:Slider({
+    Name = "Tween Speed",
+    Min = 50,
+    Max = 500,
+    Default = 100,
+    Callback = function(value)
+        tweenSpeed = value
     end
-end)
+})
+
+Tab:Slider({
+    Name = "Farm Distance",
+    Min = 2,
+    Max = 30,
+    Default = 5,
+    Callback = function(value)
+        farmDistance = value
+    end
+})
 
 -- ═══════════════════════════════════════
 -- WEAPON SETTINGS
 -- ═══════════════════════════════════════
 Tab:Section("Weapon Settings")
 
-local autoEquipEnabled = false
-local selectedWeapon = nil
-
--- Scan tất cả tool trong Backpack + Character
 local function getWeaponList()
     local weapons = {}
     local backpack = Player.Backpack
@@ -135,15 +132,12 @@ local function getWeaponList()
     return weapons
 end
 
--- Dropdown chọn weapon từ backpack
 local weaponDropdown = Tab:Dropdown({
     Name = "Select Weapon",
     Items = getWeaponList(),
     Callback = function(weapon)
         selectedWeapon = weapon
         print("Selected weapon: " .. weapon)
-
-        -- Equip ngay khi chọn
         local tool = Player.Backpack:FindFirstChild(weapon)
         local humanoid = Player.Character and Player.Character:FindFirstChildOfClass("Humanoid")
         if tool and humanoid then
@@ -152,7 +146,6 @@ local weaponDropdown = Tab:Dropdown({
     end
 })
 
--- Toggle auto equip
 Tab:Toggle({
     Name = "Auto Equip Weapon",
     Default = false,
@@ -168,7 +161,174 @@ Tab:Toggle({
     end
 })
 
--- Auto equip loop
+-- ═══════════════════════════════════════
+-- HELPER FUNCTIONS
+-- ═══════════════════════════════════════
+
+-- Check tên NPC có khớp mob đã chọn không (Thief1,Thief2... → Thief, nhưng ThiefBoss ≠ Thief)
+local function isMobMatch(npcName, targetMob)
+    if not npcName or not targetMob then return false end
+    -- Exact match
+    if npcName == targetMob then return true end
+    -- Pattern: targetMob + số (VD: Thief1, Thief2...)
+    -- Nhưng KHÔNG match nếu có chữ khác phía sau (VD: ThiefBoss)
+    local pattern = "^" .. targetMob .. "%d+$"
+    return string.match(npcName, pattern) ~= nil
+end
+
+-- Tìm NPC gần nhất còn sống
+local function findClosestNPC()
+    local npcsFolder = workspace:FindFirstChild("NPCs")
+    if not npcsFolder then return nil end
+
+    local character = Player.Character
+    if not character then return nil end
+
+    local root = character:FindFirstChild("HumanoidRootPart")
+    if not root then return nil end
+
+    local closestNPC = nil
+    local closestDist = math.huge
+
+    for _, npc in pairs(npcsFolder:GetChildren()) do
+        if npc:IsA("Model") and isMobMatch(npc.Name, selectedMob) then
+            local npcHumanoid = npc:FindFirstChildOfClass("Humanoid")
+            local npcRoot = npc:FindFirstChild("HumanoidRootPart")
+            if npcHumanoid and npcRoot and npcHumanoid.Health > 0 then
+                local dist = (root.Position - npcRoot.Position).Magnitude
+                if dist < closestDist then
+                    closestDist = dist
+                    closestNPC = npc
+                end
+            end
+        end
+    end
+
+    return closestNPC
+end
+
+-- Tính vị trí farm dựa theo mode
+local function getFarmPosition(npcRoot)
+    if farmMode == "Above" then
+        -- Ở trên đầu mob
+        return npcRoot.CFrame * CFrame.new(0, farmDistance, 0)
+    else
+        -- Phía sau mob
+        return npcRoot.CFrame * CFrame.new(0, 0, farmDistance)
+    end
+end
+
+-- Tween đến vị trí
+local currentTween = nil
+local function tweenTo(targetCFrame)
+    local character = Player.Character
+    if not character then return end
+    local root = character:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+
+    -- Cancel tween cũ
+    if currentTween then
+        currentTween:Cancel()
+    end
+
+    local distance = (root.Position - targetCFrame.Position).Magnitude
+    local tweenTime = distance / tweenSpeed
+
+    if tweenTime < 0.05 then tweenTime = 0.05 end
+
+    currentTween = TweenService:Create(root, TweenInfo.new(tweenTime, Enum.EasingStyle.Linear), {
+        CFrame = targetCFrame
+    })
+    currentTween:Play()
+end
+
+-- Di chuyển hitbox (cho mode Above)
+local function moveHitbox(npc)
+    if farmMode == "Above" then
+        -- Dời HumanoidRootPart của player xuống dưới để hit mob bên dưới
+        local character = Player.Character
+        if character then
+            local root = character:FindFirstChild("HumanoidRootPart")
+            if root then
+                root.CFrame = root.CFrame * CFrame.new(0, -farmDistance, 0)
+            end
+        end
+    end
+end
+
+-- Accept quest
+local function acceptQuest(questNPC)
+    pcall(function()
+        ReplicatedStorage:WaitForChild("RemoteEvents"):WaitForChild("QuestAccept"):FireServer(questNPC)
+    end)
+end
+
+-- Spam attack
+local function spamAttack()
+    pcall(function()
+        ReplicatedStorage:WaitForChild("CombatSystem"):WaitForChild("Remotes"):WaitForChild("RequestHit"):FireServer()
+    end)
+end
+
+-- Check quest UI visible
+local function isQuestActive()
+    local ok, result = pcall(function()
+        local questUI = Player.PlayerGui:FindFirstChild("QuestUI")
+        if questUI then
+            local quest = questUI:FindFirstChild("Quest")
+            if quest then return quest.Visible end
+        end
+        return false
+    end)
+    return ok and result
+end
+
+-- ═══════════════════════════════════════
+-- MAIN LOOPS
+-- ═══════════════════════════════════════
+
+-- Loop 1: Quest auto-accept (mỗi 0.5s)
+task.spawn(function()
+    while task.wait(0.5) do
+        if autoFarmEnabled and selectedMob then
+            local questNPC = mobQuestMap[selectedMob]
+            if questNPC and not isQuestActive() then
+                acceptQuest(questNPC)
+                task.wait(1)
+            end
+        end
+    end
+end)
+
+-- Loop 2: Tìm mob + tween + spam attack (mỗi 0.1s)
+task.spawn(function()
+    while task.wait(0.1) do
+        if autoFarmEnabled and selectedMob then
+            local npc = findClosestNPC()
+            if npc then
+                local npcRoot = npc:FindFirstChild("HumanoidRootPart")
+                if npcRoot then
+                    local character = Player.Character
+                    local root = character and character:FindFirstChild("HumanoidRootPart")
+                    if root then
+                        local targetPos = getFarmPosition(npcRoot)
+                        local dist = (root.Position - targetPos.Position).Magnitude
+
+                        -- Tween đến mob nếu còn xa
+                        if dist > 3 then
+                            tweenTo(targetPos)
+                        end
+
+                        -- Spam attack
+                        spamAttack()
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- Loop 3: Auto equip weapon (mỗi 1s)
 task.spawn(function()
     while task.wait(1) do
         if autoEquipEnabled and selectedWeapon then
@@ -187,7 +347,7 @@ task.spawn(function()
     end
 end)
 
--- Auto re-equip sau khi respawn
+-- Re-equip sau respawn
 Player.CharacterAdded:Connect(function(char)
     task.wait(1)
     if autoEquipEnabled and selectedWeapon then
@@ -199,14 +359,12 @@ Player.CharacterAdded:Connect(function(char)
     end
 end)
 
--- Cập nhật dropdown khi có tool mới vào backpack
+-- Cập nhật weapon dropdown khi có tool mới
 Player.Backpack.ChildAdded:Connect(function(child)
     if child:IsA("Tool") then
         if weaponDropdown and weaponDropdown.Refresh then
             weaponDropdown:Refresh(getWeaponList())
         end
-
-        -- Auto equip nếu đang bật
         if autoEquipEnabled and selectedWeapon and child.Name == selectedWeapon then
             task.wait(0.1)
             local humanoid = Player.Character and Player.Character:FindFirstChildOfClass("Humanoid")
