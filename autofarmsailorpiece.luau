@@ -161,7 +161,7 @@ getgenv().IsTeleporting  = false
 getgenv().PlankMode      = false
 getgenv().FarmHeight     = 25
 getgenv().FarmSpeed      = 50
-getgenv().MoveMode       = "Tween"  -- "Tween" | "Teleport"
+
 
 -- ── Skill State ──
 getgenv().SelectedSkill  = 0
@@ -623,12 +623,11 @@ local function teleportToIsland(currentLevel, targetMobName)
 end
 
 -- ══════════════════════════════════════════
--- 5. FIND MOB & TWEEN (+ Plank + Teleport mode)
+-- 5. FIND MOB & TWEEN
 -- ══════════════════════════════════════════
-local STEP_SIZE   = 50
-local STEP_TIME   = 0.08
-local STEP_DELAY  = 0.03
-local CLOSE_RANGE = 15
+local TWEEN_SPEED   = 150   -- studs per second
+local CLOSE_RANGE   = 15
+local MAX_TWEEN_TIME = 3    -- max seconds per tween
 
 local function findMob(targetName)
     local npcFolder = workspace:FindFirstChild("NPCs")
@@ -689,14 +688,13 @@ local function findBoss(bossName)
     return nil
 end
 
-local function microTween(root, targetCF)
-    local tw = TweenService:Create(
-        root,
-        TweenInfo.new(STEP_TIME, Enum.EasingStyle.Linear),
-        { CFrame = targetCF }
-    )
-    tw:Play()
-    tw.Completed:Wait()
+local _activeTween = nil
+
+local function cancelTween()
+    if _activeTween then
+        pcall(function() _activeTween:Cancel() end)
+        _activeTween = nil
+    end
 end
 
 local function tweenToMob(mob)
@@ -705,7 +703,6 @@ local function tweenToMob(mob)
     if not mob or not mob:FindFirstChild("HumanoidRootPart") then return end
 
     local root = char.HumanoidRootPart
-    local hum  = char:FindFirstChildOfClass("Humanoid")
 
     -- Calculate target position
     local offset = Vector3.new(0, 0, 5)
@@ -713,49 +710,71 @@ local function tweenToMob(mob)
         offset = Vector3.new(0, getgenv().FarmHeight, 0)
     end
     local targetPos = mob.HumanoidRootPart.Position + offset
-
-    -- Teleport mode: instant move
-    if getgenv().MoveMode == "Teleport" then
-        root.CFrame = CFrame.new(targetPos)
-        return
-    end
-
-    -- Tween mode: step-based
     local totalDist = (targetPos - root.Position).Magnitude
-    getgenv().IsTeleporting = true
 
+    -- Already close enough
     if totalDist <= CLOSE_RANGE then
-        microTween(root, CFrame.new(targetPos))
-        getgenv().IsTeleporting = false
+        root.CFrame = CFrame.lookAt(targetPos, mob.HumanoidRootPart.Position)
         return
     end
 
-    local steps = math.ceil(totalDist / STEP_SIZE)
-    local startPos = root.Position
+    getgenv().IsTeleporting = true
+    cancelTween()
 
-    for i = 1, steps do
-        if not getgenv().IsFarm and not getgenv().IsBossFight and not getgenv().IsAutoDungeon then break end
-        if not mob or not mob.Parent then break end
+    -- Calculate tween duration based on distance and speed
+    local speed = getgenv().FarmSpeed or TWEEN_SPEED
+    local duration = math.clamp(totalDist / speed, 0.1, MAX_TWEEN_TIME)
 
-        if mob:FindFirstChild("HumanoidRootPart") then
-            targetPos = mob.HumanoidRootPart.Position + offset
+    -- Face the mob
+    local lookCF = CFrame.lookAt(targetPos, mob.HumanoidRootPart.Position)
+
+    -- Create smooth tween
+    local tw = TweenService:Create(
+        root,
+        TweenInfo.new(duration, Enum.EasingStyle.Linear, Enum.EasingDirection.Out),
+        { CFrame = lookCF }
+    )
+    _activeTween = tw
+    tw:Play()
+
+    -- Wait for completion OR mob dies/moves OR farming stops
+    local startTime = tick()
+    while tw.PlaybackState == Enum.PlaybackState.Playing do
+        task.wait(0.05)
+
+        -- Stop conditions
+        if not getgenv().IsFarm and not getgenv().IsBossFight and not getgenv().IsAutoDungeon and not getgenv().IsBossRush then
+            cancelTween()
+            break
+        end
+        if not mob or not mob.Parent or not mob:FindFirstChild("HumanoidRootPart") then
+            cancelTween()
+            break
         end
 
-        local nextPos
-        if i == steps then
-            nextPos = targetPos
-        else
-            local progress = i / steps
-            nextPos = startPos:Lerp(targetPos, progress)
+        -- Update target if mob moved (re-tween)
+        local newTarget = mob.HumanoidRootPart.Position + offset
+        local drift = (newTarget - targetPos).Magnitude
+        if drift > 10 then
+            cancelTween()
+            targetPos = newTarget
+            local remaining = (targetPos - root.Position).Magnitude
+            local newDur = math.clamp(remaining / speed, 0.05, MAX_TWEEN_TIME)
+            local newCF = CFrame.lookAt(targetPos, mob.HumanoidRootPart.Position)
+            tw = TweenService:Create(
+                root,
+                TweenInfo.new(newDur, Enum.EasingStyle.Linear),
+                { CFrame = newCF }
+            )
+            _activeTween = tw
+            tw:Play()
         end
 
-        local moveDir = (nextPos - root.Position)
-        if moveDir.Magnitude > 0 then
-            root.Velocity = moveDir.Unit * getgenv().FarmSpeed
+        -- Timeout safety
+        if tick() - startTime > MAX_TWEEN_TIME + 1 then
+            cancelTween()
+            break
         end
-
-        microTween(root, CFrame.new(nextPos))
-        task.wait(STEP_DELAY)
     end
 
     root.Velocity = Vector3.new(0, 0, 0)
@@ -1304,13 +1323,10 @@ toggleRefs.PlankMode = FarmTab:Toggle({
     end,
 })
 
-FarmTab:Dropdown({
-    Name = "🚀 Move Mode",
-    Items = {"Tween", "Teleport"},
-    Callback = function(val)
-        getgenv().MoveMode = val
-        markConfigDirty()
-    end,
+FarmTab:Slider({
+    Name = "🚀 Tween Speed (studs/s)",
+    Min = 50, Max = 300, Default = 150,
+    Callback = function(val) getgenv().FarmSpeed = val; markConfigDirty() end,
 })
 
 FarmTab:Slider({
