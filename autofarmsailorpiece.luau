@@ -15,8 +15,110 @@ local TweenService = game:GetService("TweenService")
 local RepStorage   = game:GetService("ReplicatedStorage")
 local UIS          = game:GetService("UserInputService")
 local RunService   = game:GetService("RunService")
+local TeleportService = game:GetService("TeleportService")
 
+-- ══════════════════════════════════════════
+-- 0.1. ANTI-KICK SYSTEM (MULTI-LAYER)
+-- ══════════════════════════════════════════
 local player       = Players.LocalPlayer
+local _kicksBlocked = 0
+
+local function _logKickBlock(layer, info)
+    _kicksBlocked = _kicksBlocked + 1
+    warn(("[ANTI-KICK] Layer %s blocked #%d: %s"):format(layer, _kicksBlocked, tostring(info)))
+end
+
+-- Layer 1: hookmetamethod __namecall
+do
+    local OldNameKick
+    OldNameKick = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
+        local method = getnamecallmethod()
+        local args = {...}
+        if (method == "Kick" or method == "kick") and (self == player or self == Players) then
+            _logKickBlock("1", args[1] or "no reason")
+            return nil
+        end
+        if method == "TeleportToPlaceInstance" and self == TeleportService then
+            _logKickBlock("1", "TeleportToPlaceInstance")
+            return nil
+        end
+        return OldNameKick(self, ...)
+    end))
+end
+
+-- Layer 2: hookfunction Player:Kick
+if hookfunction then
+    local oldKick
+    oldKick = hookfunction(player.Kick, newcclosure(function(self, ...)
+        if self == player then
+            _logKickBlock("2", ({...})[1] or "no reason")
+            return nil
+        end
+        return oldKick(self, ...)
+    end))
+end
+
+-- Layer 3: hookfunction TeleportService
+if hookfunction then
+    local oldTP
+    oldTP = hookfunction(TeleportService.Teleport, newcclosure(function(self, placeId, plr, ...)
+        if plr == player then
+            _logKickBlock("3", "PlaceId=" .. tostring(placeId))
+            return nil
+        end
+        return oldTP(self, placeId, plr, ...)
+    end))
+    local oldTPPlace
+    oldTPPlace = hookfunction(TeleportService.TeleportToPlaceInstance, newcclosure(function(self, placeId, instId, plr, ...)
+        if plr == player then
+            _logKickBlock("3", "PlaceId=" .. tostring(placeId))
+            return nil
+        end
+        return oldTPPlace(self, placeId, instId, plr, ...)
+    end))
+end
+
+-- Layer 4: hookfunction RemoteEvent:FireServer (kick remotes)
+if hookfunction then
+    local dummy = Instance.new("RemoteEvent")
+    local oldFire
+    oldFire = hookfunction(dummy.FireServer, newcclosure(function(self, ...)
+        if typeof(self) == "Instance" and self:IsA("RemoteEvent") then
+            local n = self.Name:lower()
+            if n:find("kick") or n:find("ban") or n:find("punish") or n:find("anticheat") then
+                _logKickBlock("4", self:GetFullName())
+                return nil
+            end
+        end
+        return oldFire(self, ...)
+    end))
+    dummy:Destroy()
+end
+
+-- Layer 5: getgc scan — hook kick/ban functions in memory
+if getgc and hookfunction then
+    for _, v in pairs(getgc(true)) do
+        if type(v) == "function" and not is_synapse_function(v) then
+            pcall(function()
+                local info = getinfo(v)
+                if info and info.source then
+                    local src = info.source:lower()
+                    local name = (info.name or ""):lower()
+                    if (src:find("anticheat") or src:find("security") or src:find("moderation")) then
+                        if name:find("kick") or name:find("ban") or name:find("remove") then
+                            hookfunction(v, newcclosure(function(...)
+                                _logKickBlock("5", tostring(info.name))
+                                return nil
+                            end))
+                        end
+                    end
+                end
+            end)
+        end
+    end
+end
+
+print("[ANTI-KICK] All 5 layers active 🛡️")
 local questcheck   = require(RepStorage.Modules.QuestConfig)
 local checkmap     = require(RepStorage.TravelConfig)
 
@@ -75,7 +177,7 @@ getgenv()._statsInitialized = false
 getgenv().SelectedIsland  = nil
 
 -- Status text
-local statusText = "Sẵn sàng. Bật Auto Farm để bắt đầu."
+local statusText = "Ready. Enable Auto Farm to begin."
 local function setStatus(text)
     statusText = text
 end
@@ -88,7 +190,7 @@ local HttpService = game:GetService("HttpService")
 local _autoSaveEnabled = true
 local _configDirty = false
 
--- Danh sách key cần lưu
+-- List of keys to save
 local CONFIG_KEYS = {
     -- Farm
     "IsFarm", "SelectedMob", "WeaponMode", "AttackCooldown",
@@ -139,7 +241,7 @@ local function loadConfig()
         local data = HttpService:JSONDecode(json)
         for _, key in ipairs(CONFIG_KEYS) do
             if data[key] ~= nil then
-                -- AutoSkills là table, cần merge đúng cách
+                -- AutoSkills is a table, needs proper merging
                 if key == "AutoSkills" and type(data[key]) == "table" then
                     for k, v in pairs(data[key]) do
                         getgenv().AutoSkills[k] = v
@@ -171,7 +273,7 @@ local function resetConfig()
             delfile(CONFIG_FILE)
         end
     end)
-    -- Reset về default
+    -- Reset to defaults
     getgenv().IsFarm         = false
     getgenv().SelectedMob    = nil
     getgenv().WeaponMode     = "Melee"
@@ -199,12 +301,12 @@ local function resetConfig()
     setStatus("🔄 Config reset to defaults!")
 end
 
--- Đánh dấu config dirty khi thay đổi setting
+-- Mark config dirty when settings change
 local function markConfigDirty()
     _configDirty = true
 end
 
--- Auto-save loop (mỗi 30s nếu có thay đổi)
+-- Auto-save loop (every 30s if changes detected)
 task.spawn(function()
     while true do
         task.wait(30)
@@ -215,7 +317,7 @@ task.spawn(function()
     end
 end)
 
--- Load config ngay lúc khởi động
+-- Load config on startup
 loadConfig()
 
 -- ══════════════════════════════════════════
@@ -304,7 +406,7 @@ task.spawn(function()
 end)
 
 -- ══════════════════════════════════════════
--- 2. MOB DATABASE: QUÉT & SORT THEO LEVEL
+-- 2. MOB DATABASE: SCAN & SORT BY LEVEL
 -- ══════════════════════════════════════════
 local MobDatabase = {}
 
@@ -734,7 +836,7 @@ local function doBossFight()
     local boss = findBoss(bossName)
 
     if not boss then
-        setStatus("🔍 Boss không tìm thấy: " .. tostring(bossName))
+        setStatus("🔍 Boss not found: " .. tostring(bossName))
         return false
     end
 
@@ -874,7 +976,7 @@ local DungeonQuestOrder = {"Shadow", "Rune", "Cid", "Shadow", "Rune", "Cid"}
 local function doDungeonQuest()
     local progress = getDungeonQuestProgress()
     if progress >= 6 then
-        setStatus("✅ Dungeon Quest hoàn thành! (6/6)")
+        setStatus("✅ Dungeon Quest complete! (6/6)")
         return false
     end
 
@@ -913,7 +1015,7 @@ local function doHogyokuQuest()
                 end
             end
         end)
-        setStatus("✅ Hogyoku Quest hoàn thành! (5/5)")
+        setStatus("✅ Hogyoku Quest complete! (5/5)")
         return false
     end
 
@@ -996,6 +1098,11 @@ end)
 -- ══════════════════════════════════════════
 local Nova = loadstring(game:HttpGet("https://raw.githubusercontent.com/jachvn112-droid/sailor-piece-script/main/NovaLib.luau"))()
 
+-- Toggle/Dropdown references for config sync
+local toggleRefs = {}
+local mobDropdown, bossDropdown
+local syncTogglesFromConfig  -- forward declaration
+
 local GUI = Nova:Create({
     Name = "⚓ Sailor Piece Hub v4",
     Theme = Nova.Themes.Ocean,
@@ -1007,7 +1114,7 @@ local FarmTab = GUI:Tab({ Name = "🏠 Farm" })
 
 FarmTab:Section("⚔️ Auto Farm")
 
-FarmTab:Toggle({
+toggleRefs.IsFarm = FarmTab:Toggle({
     Name = "Auto Farm Quest",
     Default = false,
     Callback = function(state)
@@ -1017,8 +1124,8 @@ FarmTab:Toggle({
     end,
 })
 
-FarmTab:Toggle({
-    Name = "🛹 Plank Mode (hover trên mob)",
+toggleRefs.PlankMode = FarmTab:Toggle({
+    Name = "🛹 Plank Mode (hover above mob)",
     Default = false,
     Callback = function(state)
         getgenv().PlankMode = state
@@ -1056,16 +1163,16 @@ FarmTab:Slider({
 FarmTab:Section("🎯 Target")
 
 buildMobDatabase()
-local mobNames = {"Auto (theo Level)"}
+local mobNames = {"Auto (by Level)"}
 for _, mob in ipairs(MobDatabase) do
     table.insert(mobNames, string.format("[Lv.%d] %s", mob.level, mob.name))
 end
 
-FarmTab:Dropdown({
-    Name = "👾 Chọn Quái",
+mobDropdown = FarmTab:Dropdown({
+    Name = "👾 Select Mob",
     Items = mobNames,
     Callback = function(val)
-        if val == "Auto (theo Level)" then
+        if val == "Auto (by Level)" then
             getgenv().SelectedMob = nil
         else
             getgenv().SelectedMob = val:match("%] (.+)$")
@@ -1079,7 +1186,7 @@ local BossTab = GUI:Tab({ Name = "⚔️ Boss" })
 
 BossTab:Section("🐉 World Boss Fight")
 
-BossTab:Toggle({
+toggleRefs.IsBossFight = BossTab:Toggle({
     Name = "Auto Boss Fight",
     Default = false,
     Callback = function(state)
@@ -1090,8 +1197,8 @@ BossTab:Toggle({
 })
 
 buildBossList()
-BossTab:Dropdown({
-    Name = "🎯 Chọn Boss",
+bossDropdown = BossTab:Dropdown({
+    Name = "🎯 Select Boss",
     Items = BossList,
     Callback = function(val)
         getgenv().SelectedBoss = val
@@ -1101,7 +1208,7 @@ BossTab:Dropdown({
 
 BossTab:Section("🔮 Summon Boss")
 
-BossTab:Toggle({
+toggleRefs.IsSummonBoss = BossTab:Toggle({
     Name = "Auto Summon Boss",
     Default = false,
     Callback = function(state)
@@ -1125,7 +1232,7 @@ local ModeTab = GUI:Tab({ Name = "🎮 Modes" })
 
 ModeTab:Section("🏰 Dungeons")
 
-ModeTab:Toggle({
+toggleRefs.IsAutoDungeon = ModeTab:Toggle({
     Name = "Auto Dungeon",
     Default = false,
     Callback = function(state)
@@ -1146,7 +1253,7 @@ ModeTab:Dropdown({
 
 ModeTab:Section("⚡ Boss Rush")
 
-ModeTab:Toggle({
+toggleRefs.IsBossRush = ModeTab:Toggle({
     Name = "Auto Boss Rush",
     Default = false,
     Callback = function(state)
@@ -1158,7 +1265,7 @@ ModeTab:Toggle({
 
 ModeTab:Section("🔮 Quest Chains")
 
-ModeTab:Toggle({
+toggleRefs.IsDungeonQuest = ModeTab:Toggle({
     Name = "Dungeon Quest (6 pieces)",
     Default = false,
     Callback = function(state)
@@ -1168,7 +1275,7 @@ ModeTab:Toggle({
     end,
 })
 
-ModeTab:Toggle({
+toggleRefs.IsHogyokuQuest = ModeTab:Toggle({
     Name = "Hogyoku Quest (5 fragments)",
     Default = false,
     Callback = function(state)
@@ -1239,7 +1346,7 @@ local ItemTab = GUI:Tab({ Name = "📦 Items" })
 
 ItemTab:Section("📦 Auto Chest")
 
-ItemTab:Toggle({
+toggleRefs.IsAutoChest = ItemTab:Toggle({
     Name = "Auto Open Chests",
     Default = false,
     Callback = function(state)
@@ -1251,7 +1358,7 @@ ItemTab:Toggle({
 
 ItemTab:Section("🛒 Auto Merchant")
 
-ItemTab:Toggle({
+toggleRefs.IsAutoMerchant = ItemTab:Toggle({
     Name = "Auto Buy from Merchant",
     Default = false,
     Callback = function(state)
@@ -1286,7 +1393,7 @@ if #_islandNames == 0 then
 end
 
 TeleportTab:Dropdown({
-    Name = "🏝️ Chọn Đảo",
+    Name = "🏝️ Select Island",
     Items = _islandNames,
     Callback = function(val)
         -- Extract zone name from "[Lv.X-Y] ZoneName"
@@ -1301,7 +1408,7 @@ TeleportTab:Button({
     Callback = function()
         local island = getgenv().SelectedIsland
         if not island then
-            setStatus("⚠️ Chọn đảo trước!")
+            setStatus("⚠️ Select an island first!")
             return
         end
         setStatus("🌍 Teleporting to: " .. island)
@@ -1320,19 +1427,19 @@ TeleportTab:Button({
 TeleportTab:Section("🔄 Quick Teleport")
 
 TeleportTab:Button({
-    Name = "🏠 Về Starter Island",
+    Name = "🏠 Go to Starter Island",
     Callback = function()
         setStatus("🏠 Teleporting to Starter...")
         pcall(function()
             RepStorage:WaitForChild("Remotes"):WaitForChild("TeleportToPortal"):FireServer("Starter")
         end)
         task.wait(2)
-        setStatus("✅ Đã về Starter Island")
+        setStatus("✅ Returned to Starter Island")
     end,
 })
 
 TeleportTab:Button({
-    Name = "📍 TP đến Quest hiện tại",
+    Name = "📍 TP to Current Quest",
     Callback = function()
         local _, _, choosenpc = getTargetQuest()
         if choosenpc then
@@ -1340,7 +1447,7 @@ TeleportTab:Button({
             teleportToIsland(currentLevel, choosenpc)
             setStatus("📍 TP to quest mob: " .. choosenpc)
         else
-            setStatus("⚠️ Không tìm thấy quest phù hợp level")
+            setStatus("⚠️ No quest found matching your level")
         end
     end,
 })
@@ -1512,7 +1619,7 @@ SettingsTab:Dropdown({
 
 SettingsTab:Section("🔧 Utility")
 
-SettingsTab:Toggle({
+toggleRefs.IsNoclip = SettingsTab:Toggle({
     Name = "👻 Noclip",
     Default = false,
     Callback = function(state)
@@ -1569,7 +1676,7 @@ SettingsTab:Toggle({
 SettingsTab:Section("💾 Config Save/Load")
 
 SettingsTab:Toggle({
-    Name = "💾 Auto Save (mỗi 30s)",
+    Name = "💾 Auto Save (every 30s)",
     Default = true,
     Callback = function(state)
         _autoSaveEnabled = state
@@ -1588,6 +1695,7 @@ SettingsTab:Button({
     Name = "📂 Load Config",
     Callback = function()
         loadConfig()
+        syncTogglesFromConfig()
     end,
 })
 
@@ -1692,9 +1800,43 @@ SettingsTab:Button({
     Callback = function()
         buildMobDatabase()
         buildBossList()
+        -- Rebuild dropdown items
+        if mobDropdown then
+            local freshMobs = {"Auto (by Level)"}
+            for _, mob in ipairs(MobDatabase) do
+                table.insert(freshMobs, string.format("[Lv.%d] %s", mob.level, mob.name))
+            end
+            mobDropdown:SetItems(freshMobs)
+        end
+        if bossDropdown then
+            bossDropdown:SetItems(BossList)
+        end
         setStatus(string.format("✅ Found %d mobs, %d bosses", #MobDatabase, #BossList))
     end,
 })
+
+-- ══════════════════════════════════════════
+-- 13b. SYNC TOGGLES FROM SAVED CONFIG
+-- ══════════════════════════════════════════
+syncTogglesFromConfig = function()
+    local mapping = {
+        IsFarm = "IsFarm", PlankMode = "PlankMode",
+        IsBossFight = "IsBossFight", IsSummonBoss = "IsSummonBoss",
+        IsAutoDungeon = "IsAutoDungeon", IsBossRush = "IsBossRush",
+        IsDungeonQuest = "IsDungeonQuest", IsHogyokuQuest = "IsHogyokuQuest",
+        IsAutoChest = "IsAutoChest", IsAutoMerchant = "IsAutoMerchant",
+        IsNoclip = "IsNoclip",
+    }
+    for refKey, envKey in pairs(mapping) do
+        local ref = toggleRefs[refKey]
+        if ref and ref.Set then
+            ref:Set(getgenv()[envKey] == true)
+        end
+    end
+end
+
+-- Sync UI to match any config loaded at startup (line 219)
+syncTogglesFromConfig()
 
 -- ══════════════════════════════════════════
 -- 14. PRIORITY MAIN LOOP
@@ -1713,7 +1855,7 @@ task.spawn(function()
 
         local humanoid = char:FindFirstChildOfClass("Humanoid")
         if not humanoid or humanoid.Health <= 0 then
-            setStatus("💀 Đợi respawn...")
+            setStatus("💀 Waiting for respawn...")
             task.wait(2)
             continue
         end
@@ -1777,7 +1919,7 @@ task.spawn(function()
             end
 
             if not targetMobName then
-                setStatus("❓ Không tìm thấy quái phù hợp level.")
+                setStatus("❓ No mob found matching your level.")
                 task.wait(1)
                 continue
             end
@@ -1810,11 +1952,11 @@ task.spawn(function()
 
                     -- ── Kill counter hook ──
                     getgenv()._statsTotalKills = getgenv()._statsTotalKills + 1
-                    setStatus("✅ Hạ: " .. (mob and mob.Name or "mob") .. " | Total: " .. getgenv()._statsTotalKills)
+                    setStatus("✅ Killed: " .. (mob and mob.Name or "mob") .. " | Total: " .. getgenv()._statsTotalKills)
                     task.wait(0.3)
                 end
             else
-                setStatus("🔍 " .. targetMobName .. " → Chuyển đảo...")
+                setStatus("🔍 " .. targetMobName .. " → Switching island...")
                 local currentLevel = player.Data.Level.Value
                 teleportToIsland(currentLevel, targetMobName)
                 task.wait(1)

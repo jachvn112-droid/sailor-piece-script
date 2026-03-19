@@ -556,6 +556,15 @@ function Nova:Create(config)
         tween(minBtn, {BackgroundTransparency = 0.8}, 0.2)
     end)
 
+    local minimized = false
+    minBtn.MouseButton1Click:Connect(function()
+        minimized = not minimized
+        minBtn.Text = minimized and "+" or "─"
+        tabBar.Visible = not minimized
+        contentArea.Visible = not minimized
+        tween(main, {Size = minimized and UDim2.new(0, size.X.Offset, 0, 42) or size}, 0.25, Enum.EasingStyle.Back)
+    end)
+
     -- Drag functionality
     local dragging, dragInput, dragStart, startPos
     titleBar.InputBegan:Connect(function(input)
@@ -760,6 +769,12 @@ function Nova:Create(config)
                 ripple(btn, theme)
                 if config.Callback then config.Callback() end
             end)
+
+            return {
+                SetName = function(_, newText)
+                    label.Text = newText
+                end,
+            }
         end
 
         -- ═══════════════════════════════════════
@@ -995,6 +1010,51 @@ function Nova:Create(config)
                 tween(frame, {Size = UDim2.new(1, 0, 0, targetH)}, 0.3, Enum.EasingStyle.Back)
                 arrow.Text = isOpen and "▲" or "▼"
             end)
+
+            return {
+                SetItems = function(_, newItems)
+                    items = newItems
+                    -- Clear old items
+                    for _, child in ipairs(itemContainer:GetChildren()) do
+                        if child:IsA("TextButton") then child:Destroy() end
+                    end
+                    itemContainer.Size = UDim2.new(1, -8, 0, #items * 30)
+                    -- Rebuild items
+                    for _, item in pairs(items) do
+                        local itemBtn = Instance.new("TextButton")
+                        itemBtn.Size = UDim2.new(1, 0, 0, 28)
+                        itemBtn.BackgroundColor3 = theme.Primary
+                        itemBtn.BackgroundTransparency = 0.3
+                        itemBtn.Text = tostring(item)
+                        itemBtn.TextColor3 = theme.SubText
+                        itemBtn.TextSize = 12
+                        itemBtn.Font = Enum.Font.Gotham
+                        itemBtn.BorderSizePixel = 0
+                        itemBtn.Parent = itemContainer
+                        addCorner(itemBtn, 6)
+
+                        itemBtn.MouseEnter:Connect(function()
+                            tween(itemBtn, {BackgroundTransparency = 0, TextColor3 = theme.Accent}, 0.15)
+                        end)
+                        itemBtn.MouseLeave:Connect(function()
+                            tween(itemBtn, {BackgroundTransparency = 0.3, TextColor3 = theme.SubText}, 0.15)
+                        end)
+                        itemBtn.MouseButton1Click:Connect(function()
+                            label.Text = tostring(item)
+                            isOpen = false
+                            tween(frame, {Size = UDim2.new(1, 0, 0, 36)}, 0.25, Enum.EasingStyle.Back)
+                            arrow.Text = "▼"
+                            if config.Callback then config.Callback(item) end
+                        end)
+                    end
+                    -- Collapse dropdown after refresh
+                    if isOpen then
+                        isOpen = false
+                        tween(frame, {Size = UDim2.new(1, 0, 0, 36)}, 0.25)
+                        arrow.Text = "▼"
+                    end
+                end,
+            }
         end
 
         -- ═══════════════════════════════════════
