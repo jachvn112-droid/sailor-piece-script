@@ -1,18 +1,24 @@
-local args = {[1] = "QuestNPC1"}
-game:GetService("ReplicatedStorage").RemoteEvents.QuestAccept:FireServer(unpack(args))
-
+--lv 1-100
 
 local args = {
-    [1] = "Jungle"
+	"QuestNPC1"
 }
-
+game:GetService("ReplicatedStorage"):WaitForChild("RemoteEvents"):WaitForChild("QuestAccept"):FireServer(unpack(args))
+workspace.NPCs.Thief1 
+local args = {
+	"Starter"
+}
 game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("TeleportToPortal"):FireServer(unpack(args))
 
 
-
-
+#lv 100-249
 local args = {
-    [1] = "Jungle"
+	"QuestNPC2"
 }
+game:GetService("ReplicatedStorage"):WaitForChild("RemoteEvents"):WaitForChild("QuestAccept"):FireServer(unpack(args))
+workspace.NPCs.ThiefBoss
 
-game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("TeleportToPortal"):FireServer(unpack(args))
+
+
+--workspace of npc
+workspace.NPCs

@@ -444,7 +444,10 @@ local MobDatabase = {}
 local function buildMobDatabase()
     table.clear(MobDatabase)
 
+    -- Step 1: Collect all quest levels and npcType → minLevel mapping
     local npcLevelMap = {}
+    local allLevels = {}
+    local levelSet = {}
     for _, questData in pairs(questcheck.RepeatableQuests) do
         local reqLevel = tonumber(questData.recommendedLevel) or 0
         if questData.requirements then
@@ -453,9 +456,31 @@ local function buildMobDatabase()
                     if not npcLevelMap[req.npcType] or reqLevel > npcLevelMap[req.npcType] then
                         npcLevelMap[req.npcType] = reqLevel
                     end
+                    if not levelSet[reqLevel] then
+                        levelSet[reqLevel] = true
+                        table.insert(allLevels, reqLevel)
+                    end
                 end
             end
         end
+    end
+
+    -- Step 2: Sort all levels and build a "next level" lookup for ranges
+    table.sort(allLevels)
+    local nextLevelMap = {}
+    for i, lvl in ipairs(allLevels) do
+        if i < #allLevels then
+            nextLevelMap[lvl] = allLevels[i + 1]
+        else
+            nextLevelMap[lvl] = "MAX"
+        end
+    end
+
+    -- Step 3: Build npcType → {minLevel, maxLevel} range map
+    local npcRangeMap = {}
+    for npcType, minLvl in pairs(npcLevelMap) do
+        local maxLvl = nextLevelMap[minLvl] or "MAX"
+        npcRangeMap[npcType] = { min = minLvl, max = maxLvl }
     end
 
     local seenTypes = {}
@@ -466,10 +491,12 @@ local function buildMobDatabase()
                 local npcName = npc.Name
                 if not seenTypes[npcName] then
                     seenTypes[npcName] = true
-                    local level = 0
-                    for npcType, lvl in pairs(npcLevelMap) do
+                    local minLevel = 0
+                    local maxLevel = "MAX"
+                    for npcType, range in pairs(npcRangeMap) do
                         if string.find(npcName, npcType) then
-                            level = lvl
+                            minLevel = range.min
+                            maxLevel = range.max
                             break
                         end
                     end
@@ -481,9 +508,11 @@ local function buildMobDatabase()
                     end)
 
                     table.insert(MobDatabase, {
-                        name   = npcName,
-                        level  = level,
-                        island = island,
+                        name     = npcName,
+                        level    = minLevel,
+                        minLevel = minLevel,
+                        maxLevel = maxLevel,
+                        island   = island,
                     })
                 end
             end
@@ -1205,7 +1234,8 @@ FarmTab:Section("🎯 Target")
 buildMobDatabase()
 local mobNames = {"Auto (by Level)"}
 for _, mob in ipairs(MobDatabase) do
-    table.insert(mobNames, string.format("[Lv.%d] %s", mob.level, mob.name))
+    local maxLvlStr = (mob.maxLevel == "MAX") and "+" or ("-" .. tostring(mob.maxLevel))
+    table.insert(mobNames, string.format("[Lv.%d%s] %s", mob.minLevel, maxLvlStr, mob.name))
 end
 
 mobDropdown = FarmTab:Dropdown({
@@ -1844,7 +1874,8 @@ SettingsTab:Button({
         if mobDropdown then
             local freshMobs = {"Auto (by Level)"}
             for _, mob in ipairs(MobDatabase) do
-                table.insert(freshMobs, string.format("[Lv.%d] %s", mob.level, mob.name))
+                local maxLvlStr = (mob.maxLevel == "MAX") and "+" or ("-" .. tostring(mob.maxLevel))
+                table.insert(freshMobs, string.format("[Lv.%d%s] %s", mob.minLevel, maxLvlStr, mob.name))
             end
             mobDropdown:SetItems(freshMobs)
         end
