@@ -18,7 +18,7 @@ local RunService   = game:GetService("RunService")
 local TeleportService = game:GetService("TeleportService")
 
 -- ══════════════════════════════════════════
--- 0.1. ANTI-KICK SYSTEM (MULTI-LAYER)
+-- 0.1. ANTI-KICK SYSTEM (DELTA-SAFE)
 -- ══════════════════════════════════════════
 local player       = Players.LocalPlayer
 local _kicksBlocked = 0
@@ -28,97 +28,127 @@ local function _logKickBlock(layer, info)
     warn(("[ANTI-KICK] Layer %s blocked #%d: %s"):format(layer, _kicksBlocked, tostring(info)))
 end
 
+local _wrap = typeof(newcclosure) == "function" and newcclosure or function(f) return f end
+
 -- Layer 1: hookmetamethod __namecall
-do
-    local OldNameKick
-    OldNameKick = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
-        local method = getnamecallmethod()
-        local args = {...}
-        if (method == "Kick" or method == "kick") and (self == player or self == Players) then
-            _logKickBlock("1", args[1] or "no reason")
-            return nil
-        end
-        if method == "TeleportToPlaceInstance" and self == TeleportService then
-            _logKickBlock("1", "TeleportToPlaceInstance")
-            return nil
-        end
-        return OldNameKick(self, ...)
-    end))
+if typeof(hookmetamethod) == "function" and typeof(getnamecallmethod) == "function" then
+    pcall(function()
+        local OldNameKick
+        OldNameKick = hookmetamethod(game, "__namecall", _wrap(function(self, ...)
+            local method = getnamecallmethod()
+            local args = {...}
+            if (method == "Kick" or method == "kick") and (self == player or self == Players) then
+                _logKickBlock("1", args[1] or "no reason")
+                return nil
+            end
+            if method == "TeleportToPlaceInstance" and self == TeleportService then
+                _logKickBlock("1", "TeleportToPlaceInstance")
+                return nil
+            end
+            return OldNameKick(self, ...)
+        end))
+        print("[ANTI-KICK] Layer 1 ✓")
+    end)
+else
+    warn("[ANTI-KICK] Layer 1 skipped (hookmetamethod not available)")
 end
 
 -- Layer 2: hookfunction Player:Kick
-if hookfunction then
-    local oldKick
-    oldKick = hookfunction(player.Kick, newcclosure(function(self, ...)
-        if self == player then
-            _logKickBlock("2", ({...})[1] or "no reason")
-            return nil
-        end
-        return oldKick(self, ...)
-    end))
+if typeof(hookfunction) == "function" then
+    pcall(function()
+        local oldKick
+        oldKick = hookfunction(player.Kick, _wrap(function(self, ...)
+            if self == player then
+                _logKickBlock("2", ({...})[1] or "no reason")
+                return nil
+            end
+            return oldKick(self, ...)
+        end))
+        print("[ANTI-KICK] Layer 2 ✓")
+    end)
+else
+    warn("[ANTI-KICK] Layer 2 skipped (hookfunction not available)")
 end
 
 -- Layer 3: hookfunction TeleportService
-if hookfunction then
-    local oldTP
-    oldTP = hookfunction(TeleportService.Teleport, newcclosure(function(self, placeId, plr, ...)
-        if plr == player then
-            _logKickBlock("3", "PlaceId=" .. tostring(placeId))
-            return nil
-        end
-        return oldTP(self, placeId, plr, ...)
-    end))
-    local oldTPPlace
-    oldTPPlace = hookfunction(TeleportService.TeleportToPlaceInstance, newcclosure(function(self, placeId, instId, plr, ...)
-        if plr == player then
-            _logKickBlock("3", "PlaceId=" .. tostring(placeId))
-            return nil
-        end
-        return oldTPPlace(self, placeId, instId, plr, ...)
-    end))
+if typeof(hookfunction) == "function" then
+    pcall(function()
+        local oldTP
+        oldTP = hookfunction(TeleportService.Teleport, _wrap(function(self, placeId, plr, ...)
+            if plr == player then
+                _logKickBlock("3", "PlaceId=" .. tostring(placeId))
+                return nil
+            end
+            return oldTP(self, placeId, plr, ...)
+        end))
+        print("[ANTI-KICK] Layer 3a ✓")
+    end)
+    pcall(function()
+        local oldTPPlace
+        oldTPPlace = hookfunction(TeleportService.TeleportToPlaceInstance, _wrap(function(self, placeId, instId, plr, ...)
+            if plr == player then
+                _logKickBlock("3", "PlaceId=" .. tostring(placeId))
+                return nil
+            end
+            return oldTPPlace(self, placeId, instId, plr, ...)
+        end))
+        print("[ANTI-KICK] Layer 3b ✓")
+    end)
+else
+    warn("[ANTI-KICK] Layer 3 skipped")
 end
 
 -- Layer 4: hookfunction RemoteEvent:FireServer (kick remotes)
-if hookfunction then
-    local dummy = Instance.new("RemoteEvent")
-    local oldFire
-    oldFire = hookfunction(dummy.FireServer, newcclosure(function(self, ...)
-        if typeof(self) == "Instance" and self:IsA("RemoteEvent") then
-            local n = self.Name:lower()
-            if n:find("kick") or n:find("ban") or n:find("punish") or n:find("anticheat") then
-                _logKickBlock("4", self:GetFullName())
-                return nil
+if typeof(hookfunction) == "function" then
+    pcall(function()
+        local dummy = Instance.new("RemoteEvent")
+        local oldFire
+        oldFire = hookfunction(dummy.FireServer, _wrap(function(self, ...)
+            if typeof(self) == "Instance" and self:IsA("RemoteEvent") then
+                local n = self.Name:lower()
+                if n:find("kick") or n:find("ban") or n:find("punish") or n:find("anticheat") then
+                    _logKickBlock("4", self:GetFullName())
+                    return nil
+                end
             end
-        end
-        return oldFire(self, ...)
-    end))
-    dummy:Destroy()
+            return oldFire(self, ...)
+        end))
+        dummy:Destroy()
+        print("[ANTI-KICK] Layer 4 ✓")
+    end)
+else
+    warn("[ANTI-KICK] Layer 4 skipped")
 end
 
 -- Layer 5: getgc scan — hook kick/ban functions in memory
-if getgc and hookfunction then
-    for _, v in pairs(getgc(true)) do
-        if type(v) == "function" then
-            pcall(function()
-                local info = getinfo(v)
-                if info and info.source then
-                    local src = info.source:lower()
-                    local name = (info.name or ""):lower()
-                    if (src:find("anticheat") or src:find("security") or src:find("moderation")) then
-                        if name:find("kick") or name:find("ban") or name:find("remove") then
-                            hookfunction(v, newcclosure(function(...)
-                                _logKickBlock("5", tostring(info.name))
-                                return nil
-                            end))
+if typeof(getgc) == "function" and typeof(hookfunction) == "function" and typeof(getinfo) == "function" then
+    pcall(function()
+        for _, v in pairs(getgc(true)) do
+            if type(v) == "function" then
+                pcall(function()
+                    local info = getinfo(v)
+                    if info and info.source then
+                        local src = info.source:lower()
+                        local name = (info.name or ""):lower()
+                        if (src:find("anticheat") or src:find("security") or src:find("moderation")) then
+                            if name:find("kick") or name:find("ban") or name:find("remove") then
+                                hookfunction(v, _wrap(function(...)
+                                    _logKickBlock("5", tostring(info.name))
+                                    return nil
+                                end))
+                            end
                         end
                     end
-                end
-            end)
+                end)
+            end
         end
-    end
+        print("[ANTI-KICK] Layer 5 ✓")
+    end)
+else
+    warn("[ANTI-KICK] Layer 5 skipped (getgc/getinfo not available)")
 end
 
-print("[ANTI-KICK] All 5 layers active 🛡️")
+print("[ANTI-KICK] System initialized 🛡️")
 local questcheck   = require(RepStorage.Modules.QuestConfig)
 local checkmap     = require(RepStorage.TravelConfig)
 
