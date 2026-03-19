@@ -9,10 +9,12 @@ local Window = NovaLib:Create({
     Theme = NovaLib.Themes.Midnight
 })
 
--- ═══════════════════════════════════════
--- TAB 1: AUTO FARM
--- ═══════════════════════════════════════
 local Tab = Window:Tab({ Name = "Auto Farm" })
+
+-- ═══════════════════════════════════════
+-- MOB SETTINGS
+-- ═══════════════════════════════════════
+Tab:Section("Mob Settings")
 
 Tab:Dropdown({
     Name = "Select Mob",
@@ -41,167 +43,95 @@ Tab:Dropdown({
 })
 
 -- ═══════════════════════════════════════
--- TAB 2: BACKPACK / TOOL MANAGER
+-- WEAPON SETTINGS
 -- ═══════════════════════════════════════
-local BackpackTab = Window:Tab({ Name = "Backpack" })
+Tab:Section("Weapon Settings")
 
 local autoEquipEnabled = false
-local autoEquipToolName = nil
-local toolButtons = {} -- lưu các button đã tạo
+local selectedWeapon = nil
 
-BackpackTab:Section("⚔️ Tool Manager")
-
--- Toggle Auto Equip
-BackpackTab:Toggle({
-    Name = "Auto Equip Tool",
-    Default = false,
-    Callback = function(state)
-        autoEquipEnabled = state
-        if state and autoEquipToolName then
-            -- Equip ngay tool đã chọn
-            local backpack = Player.Backpack
-            local tool = backpack:FindFirstChild(autoEquipToolName)
-            if tool then
-                Player.Character:FindFirstChildOfClass("Humanoid"):EquipTool(tool)
-            end
-        end
-    end
-})
-
-BackpackTab:Section("🎒 Items in Backpack")
-
--- Nút Refresh để scan lại backpack
-BackpackTab:Button({
-    Name = "🔄 Refresh Backpack",
-    Callback = function()
-        -- Không thể xoá UI cũ trong NovaLib => thông báo tool hiện có
-        local backpack = Player.Backpack
-        local character = Player.Character
-        local toolList = {}
-
-        -- Lấy tool trong Backpack
-        for _, item in pairs(backpack:GetChildren()) do
-            if item:IsA("Tool") then
-                table.insert(toolList, item.Name)
-            end
-        end
-
-        -- Lấy tool đang equipped (trong Character)
-        if character then
-            for _, item in pairs(character:GetChildren()) do
-                if item:IsA("Tool") then
-                    table.insert(toolList, item.Name .. " [Equipped]")
-                end
-            end
-        end
-
-        if #toolList == 0 then
-            Window:Notify({
-                Title = "Backpack",
-                Content = "Không tìm thấy tool nào!",
-                Duration = 3
-            })
-        else
-            local msg = table.concat(toolList, "\n")
-            Window:Notify({
-                Title = "Backpack Items",
-                Content = msg,
-                Duration = 5
-            })
-        end
-    end
-})
-
--- Hàm tạo button cho mỗi tool
-local function createToolButton(toolName)
-    if toolButtons[toolName] then return end -- đã có button rồi
-
-    local btnObj = BackpackTab:Button({
-        Name = "🗡️ " .. toolName,
-        Callback = function()
-            local backpack = Player.Backpack
-            local character = Player.Character
-            local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-            if not humanoid then return end
-
-            -- Check tool trong backpack
-            local tool = backpack:FindFirstChild(toolName)
-            if tool then
-                humanoid:EquipTool(tool)
-                autoEquipToolName = toolName
-                Window:Notify({
-                    Title = "Equipped",
-                    Content = "Đã equip: " .. toolName,
-                    Duration = 2
-                })
-            else
-                -- Có thể đang equipped => unequip
-                local equipped = character:FindFirstChild(toolName)
-                if equipped and equipped:IsA("Tool") then
-                    humanoid:UnequipTools()
-                    Window:Notify({
-                        Title = "Unequipped",
-                        Content = "Đã unequip: " .. toolName,
-                        Duration = 2
-                    })
-                end
-            end
-        end
-    })
-
-    toolButtons[toolName] = btnObj
-end
-
--- Scan Backpack lần đầu và tạo button
-local function scanBackpack()
+-- Scan tất cả tool trong Backpack + Character
+local function getWeaponList()
+    local weapons = {}
     local backpack = Player.Backpack
     local character = Player.Character
 
-    -- Scan tool trong Backpack
     for _, item in pairs(backpack:GetChildren()) do
         if item:IsA("Tool") then
-            createToolButton(item.Name)
+            table.insert(weapons, item.Name)
         end
     end
 
-    -- Scan tool đang equipped trong Character
     if character then
         for _, item in pairs(character:GetChildren()) do
             if item:IsA("Tool") then
-                createToolButton(item.Name)
+                if not table.find(weapons, item.Name) then
+                    table.insert(weapons, item.Name)
+                end
             end
         end
     end
+
+    return weapons
 end
 
--- Scan ban đầu
-scanBackpack()
+-- Dropdown chọn weapon từ backpack
+local weaponDropdown = Tab:Dropdown({
+    Name = "Select Weapon",
+    Items = getWeaponList(),
+    Callback = function(weapon)
+        selectedWeapon = weapon
+        print("Selected weapon: " .. weapon)
 
--- Tự động detect tool mới được thêm vào Backpack
-Player.Backpack.ChildAdded:Connect(function(child)
-    if child:IsA("Tool") then
-        createToolButton(child.Name)
+        -- Equip ngay khi chọn
+        local tool = Player.Backpack:FindFirstChild(weapon)
+        local humanoid = Player.Character and Player.Character:FindFirstChildOfClass("Humanoid")
+        if tool and humanoid then
+            humanoid:EquipTool(tool)
+        end
+    end
+})
 
-        -- Auto equip nếu đang bật và đúng tool
-        if autoEquipEnabled and autoEquipToolName and child.Name == autoEquipToolName then
-            task.wait(0.1)
+-- Toggle auto equip
+Tab:Toggle({
+    Name = "Auto Equip Weapon",
+    Default = false,
+    Callback = function(state)
+        autoEquipEnabled = state
+        if state and selectedWeapon then
+            local tool = Player.Backpack:FindFirstChild(selectedWeapon)
             local humanoid = Player.Character and Player.Character:FindFirstChildOfClass("Humanoid")
-            if humanoid then
-                humanoid:EquipTool(child)
+            if tool and humanoid then
+                humanoid:EquipTool(tool)
+            end
+        end
+    end
+})
+
+-- Auto equip loop
+task.spawn(function()
+    while task.wait(1) do
+        if autoEquipEnabled and selectedWeapon then
+            local character = Player.Character
+            if character then
+                local humanoid = character:FindFirstChildOfClass("Humanoid")
+                local alreadyEquipped = character:FindFirstChild(selectedWeapon)
+                if humanoid and not alreadyEquipped then
+                    local tool = Player.Backpack:FindFirstChild(selectedWeapon)
+                    if tool then
+                        humanoid:EquipTool(tool)
+                    end
+                end
             end
         end
     end
 end)
 
--- Detect khi Character respawn => scan lại + auto re-equip
+-- Auto re-equip sau khi respawn
 Player.CharacterAdded:Connect(function(char)
-    task.wait(1) -- đợi load xong
-    scanBackpack()
-
-    -- Auto re-equip sau khi respawn
-    if autoEquipEnabled and autoEquipToolName then
-        task.wait(0.5)
-        local tool = Player.Backpack:FindFirstChild(autoEquipToolName)
+    task.wait(1)
+    if autoEquipEnabled and selectedWeapon then
+        local tool = Player.Backpack:FindFirstChild(selectedWeapon)
         local humanoid = char:FindFirstChildOfClass("Humanoid")
         if tool and humanoid then
             humanoid:EquipTool(tool)
@@ -209,20 +139,19 @@ Player.CharacterAdded:Connect(function(char)
     end
 end)
 
--- Loop auto equip: đảm bảo tool luôn được equip
-task.spawn(function()
-    while task.wait(1) do
-        if autoEquipEnabled and autoEquipToolName then
-            local character = Player.Character
-            if character then
-                local humanoid = character:FindFirstChildOfClass("Humanoid")
-                local alreadyEquipped = character:FindFirstChild(autoEquipToolName)
-                if humanoid and not alreadyEquipped then
-                    local tool = Player.Backpack:FindFirstChild(autoEquipToolName)
-                    if tool then
-                        humanoid:EquipTool(tool)
-                    end
-                end
+-- Cập nhật dropdown khi có tool mới vào backpack
+Player.Backpack.ChildAdded:Connect(function(child)
+    if child:IsA("Tool") then
+        if weaponDropdown and weaponDropdown.Refresh then
+            weaponDropdown:Refresh(getWeaponList())
+        end
+
+        -- Auto equip nếu đang bật
+        if autoEquipEnabled and selectedWeapon and child.Name == selectedWeapon then
+            task.wait(0.1)
+            local humanoid = Player.Character and Player.Character:FindFirstChildOfClass("Humanoid")
+            if humanoid then
+                humanoid:EquipTool(child)
             end
         end
     end
