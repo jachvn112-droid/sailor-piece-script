@@ -1,6 +1,7 @@
 local NovaLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/jachvn112-droid/sailor-piece-script/refs/heads/main/NovaLib.luau"))()
 
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Player = Players.LocalPlayer
 
@@ -15,6 +16,14 @@ local Tab = Window:Tab({ Name = "Auto Farm" })
 -- MOB SETTINGS
 -- ═══════════════════════════════════════
 Tab:Section("Mob Settings")
+
+local selectedMob = nil
+local autoFarmEnabled = false
+
+-- Bảng map mob → quest NPC remote arg
+local mobQuestMap = {
+    ["Thief"] = "QuestNPC1",
+}
 
 Tab:Dropdown({
     Name = "Select Mob",
@@ -38,9 +47,60 @@ Tab:Dropdown({
         "Quincy"          -- Lv 10750
     },
     Callback = function(selected)
+        selectedMob = selected
         print("Selected mob: " .. selected)
     end
 })
+
+-- Toggle Auto Farm
+Tab:Toggle({
+    Name = "Auto Farm",
+    Default = false,
+    Callback = function(state)
+        autoFarmEnabled = state
+    end
+})
+
+-- Hàm accept quest
+local function acceptQuest(questNPC)
+    pcall(function()
+        ReplicatedStorage:WaitForChild("RemoteEvents"):WaitForChild("QuestAccept"):FireServer(questNPC)
+    end)
+end
+
+-- Hàm check quest UI có đang hiện không
+local function isQuestActive()
+    local success, result = pcall(function()
+        local questUI = Player.PlayerGui:FindFirstChild("QuestUI")
+        if questUI then
+            local quest = questUI:FindFirstChild("Quest")
+            if quest then
+                return quest.Visible
+            end
+        end
+        return false
+    end)
+    if success then
+        return result
+    end
+    return false
+end
+
+-- Auto Farm loop: check quest + auto accept
+task.spawn(function()
+    while task.wait(0.5) do
+        if autoFarmEnabled and selectedMob then
+            local questNPC = mobQuestMap[selectedMob]
+            if questNPC then
+                -- Nếu quest UI không hiện (đã hoàn thành hoặc chưa nhận) → accept lại
+                if not isQuestActive() then
+                    acceptQuest(questNPC)
+                    task.wait(1) -- đợi server xử lý
+                end
+            end
+        end
+    end
+end)
 
 -- ═══════════════════════════════════════
 -- WEAPON SETTINGS
