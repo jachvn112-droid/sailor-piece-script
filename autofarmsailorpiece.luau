@@ -60,11 +60,163 @@ getgenv().MerchantItem   = nil
 getgenv().IsNoclip       = false
 getgenv()._antiAFK       = true
 
+-- ── Auto Stats State ──
+getgenv()._statsStartTime   = os.time()
+getgenv()._statsTotalKills  = 0
+getgenv()._statsBossKills   = 0
+getgenv()._statsEXPGained   = 0
+getgenv()._statsBeliGained  = 0
+getgenv()._statsStartLevel  = 0
+getgenv()._statsStartEXP    = 0
+getgenv()._statsStartBeli   = 0
+getgenv()._statsInitialized = false
+
+-- ── Teleport State ──
+getgenv().SelectedIsland  = nil
+
 -- Status text
 local statusText = "Sẵn sàng. Bật Auto Farm để bắt đầu."
 local function setStatus(text)
     statusText = text
 end
+
+-- ══════════════════════════════════════════
+-- 0.5. CONFIG SAVE / LOAD SYSTEM
+-- ══════════════════════════════════════════
+local CONFIG_FILE = "SailorPieceHub_v4_config.json"
+local HttpService = game:GetService("HttpService")
+local _autoSaveEnabled = true
+local _configDirty = false
+
+-- Danh sách key cần lưu
+local CONFIG_KEYS = {
+    -- Farm
+    "IsFarm", "SelectedMob", "WeaponMode", "AttackCooldown",
+    "PlankMode", "FarmHeight", "FarmSpeed", "MoveMode",
+    -- Skills
+    "AutoSkills", "SkillCooldown",
+    -- Boss
+    "IsBossFight", "SelectedBoss", "IsSummonBoss", "SummonDifficulty",
+    -- Dungeon / Gamemode
+    "IsAutoDungeon", "DungeonType", "IsBossRush",
+    -- Quest Chain
+    "IsDungeonQuest", "IsHogyokuQuest",
+    -- Items
+    "IsAutoChest", "IsAutoMerchant", "MerchantItem",
+    -- Misc
+    "IsNoclip", "_antiAFK",
+    -- Stats
+    "_statsTotalKills", "_statsBossKills",
+    -- Teleport
+    "SelectedIsland",
+}
+
+local function saveConfig()
+    local ok, err = pcall(function()
+        local data = {}
+        for _, key in ipairs(CONFIG_KEYS) do
+            data[key] = getgenv()[key]
+        end
+        data._savedAt = os.time()
+        local json = HttpService:JSONEncode(data)
+        writefile(CONFIG_FILE, json)
+    end)
+    if ok then
+        setStatus("💾 Config saved!")
+    else
+        warn("[Config] Save failed:", err)
+    end
+    return ok
+end
+
+local function loadConfig()
+    local ok, err = pcall(function()
+        if not isfile(CONFIG_FILE) then
+            setStatus("📂 No config found, using defaults.")
+            return
+        end
+        local json = readfile(CONFIG_FILE)
+        local data = HttpService:JSONDecode(json)
+        for _, key in ipairs(CONFIG_KEYS) do
+            if data[key] ~= nil then
+                -- AutoSkills là table, cần merge đúng cách
+                if key == "AutoSkills" and type(data[key]) == "table" then
+                    for k, v in pairs(data[key]) do
+                        getgenv().AutoSkills[k] = v
+                    end
+                else
+                    getgenv()[key] = data[key]
+                end
+            end
+        end
+        local savedTime = data._savedAt
+        if savedTime then
+            local ago = os.time() - savedTime
+            local mins = math.floor(ago / 60)
+            setStatus(string.format("✅ Config loaded! (saved %dm ago)", mins))
+        else
+            setStatus("✅ Config loaded!")
+        end
+    end)
+    if not ok then
+        warn("[Config] Load failed:", err)
+        setStatus("⚠️ Config load failed, using defaults.")
+    end
+    return ok
+end
+
+local function resetConfig()
+    pcall(function()
+        if isfile(CONFIG_FILE) then
+            delfile(CONFIG_FILE)
+        end
+    end)
+    -- Reset về default
+    getgenv().IsFarm         = false
+    getgenv().SelectedMob    = nil
+    getgenv().WeaponMode     = "Melee"
+    getgenv().AttackCooldown = 0.3
+    getgenv().PlankMode      = false
+    getgenv().FarmHeight     = 25
+    getgenv().FarmSpeed      = 50
+    getgenv().MoveMode       = "Tween"
+    getgenv().AutoSkills     = { Z = false, X = false, C = false, V = false, F = false }
+    getgenv().SkillCooldown  = 0.5
+    getgenv().IsBossFight    = false
+    getgenv().SelectedBoss   = nil
+    getgenv().IsSummonBoss   = false
+    getgenv().SummonDifficulty = "Normal"
+    getgenv().IsAutoDungeon  = false
+    getgenv().DungeonType    = "Shadow"
+    getgenv().IsBossRush     = false
+    getgenv().IsDungeonQuest = false
+    getgenv().IsHogyokuQuest = false
+    getgenv().IsAutoChest    = false
+    getgenv().IsAutoMerchant = false
+    getgenv().MerchantItem   = nil
+    getgenv().IsNoclip       = false
+    getgenv()._antiAFK       = true
+    setStatus("🔄 Config reset to defaults!")
+end
+
+-- Đánh dấu config dirty khi thay đổi setting
+local function markConfigDirty()
+    _configDirty = true
+end
+
+-- Auto-save loop (mỗi 30s nếu có thay đổi)
+task.spawn(function()
+    while true do
+        task.wait(30)
+        if _autoSaveEnabled and _configDirty then
+            _configDirty = false
+            saveConfig()
+        end
+    end
+end)
+
+-- Load config ngay lúc khởi động
+loadConfig()
 
 -- ══════════════════════════════════════════
 -- 1. ANTI-KICK + ANTI-TP-BACK HOOK
@@ -592,6 +744,12 @@ local function doBossFight()
     setStatus(string.format("⚔️ Boss Fight: %s | HP: %d/%d", boss.Name, h.Health, h.MaxHealth))
     tweenToMob(boss)
     autoAttack(boss)
+    -- Check if boss died after attack
+    task.wait(0.1)
+    if h.Health <= 0 then
+        getgenv()._statsBossKills = getgenv()._statsBossKills + 1
+        getgenv()._statsTotalKills = getgenv()._statsTotalKills + 1
+    end
     return true
 end
 
@@ -855,6 +1013,7 @@ FarmTab:Toggle({
     Callback = function(state)
         getgenv().IsFarm = state
         setStatus(state and "🟢 Auto Farm ON" or "⏸️ Auto Farm OFF")
+        markConfigDirty()
     end,
 })
 
@@ -863,6 +1022,7 @@ FarmTab:Toggle({
     Default = false,
     Callback = function(state)
         getgenv().PlankMode = state
+        markConfigDirty()
     end,
 })
 
@@ -871,25 +1031,26 @@ FarmTab:Dropdown({
     Items = {"Tween", "Teleport"},
     Callback = function(val)
         getgenv().MoveMode = val
+        markConfigDirty()
     end,
 })
 
 FarmTab:Slider({
     Name = "📏 Farm Height (Plank)",
     Min = 5, Max = 100, Default = 25,
-    Callback = function(val) getgenv().FarmHeight = val end,
+    Callback = function(val) getgenv().FarmHeight = val; markConfigDirty() end,
 })
 
 FarmTab:Slider({
     Name = "💨 Farm Speed",
     Min = 10, Max = 200, Default = 50,
-    Callback = function(val) getgenv().FarmSpeed = val end,
+    Callback = function(val) getgenv().FarmSpeed = val; markConfigDirty() end,
 })
 
 FarmTab:Slider({
     Name = "⏱️ Attack Cooldown (ms)",
     Min = 100, Max = 1000, Default = 300,
-    Callback = function(val) getgenv().AttackCooldown = val / 1000 end,
+    Callback = function(val) getgenv().AttackCooldown = val / 1000; markConfigDirty() end,
 })
 
 FarmTab:Section("🎯 Target")
@@ -909,6 +1070,7 @@ FarmTab:Dropdown({
         else
             getgenv().SelectedMob = val:match("%] (.+)$")
         end
+        markConfigDirty()
     end,
 })
 
@@ -923,6 +1085,7 @@ BossTab:Toggle({
     Callback = function(state)
         getgenv().IsBossFight = state
         setStatus(state and "🐉 Boss Fight ON" or "Boss Fight OFF")
+        markConfigDirty()
     end,
 })
 
@@ -932,6 +1095,7 @@ BossTab:Dropdown({
     Items = BossList,
     Callback = function(val)
         getgenv().SelectedBoss = val
+        markConfigDirty()
     end,
 })
 
@@ -943,6 +1107,7 @@ BossTab:Toggle({
     Callback = function(state)
         getgenv().IsSummonBoss = state
         setStatus(state and "🔮 Summon Boss ON" or "Summon OFF")
+        markConfigDirty()
     end,
 })
 
@@ -951,6 +1116,7 @@ BossTab:Dropdown({
     Items = {"Easy", "Normal", "Hard", "Nightmare"},
     Callback = function(val)
         getgenv().SummonDifficulty = val
+        markConfigDirty()
     end,
 })
 
@@ -965,6 +1131,7 @@ ModeTab:Toggle({
     Callback = function(state)
         getgenv().IsAutoDungeon = state
         setStatus(state and "🏰 Dungeon ON" or "Dungeon OFF")
+        markConfigDirty()
     end,
 })
 
@@ -973,6 +1140,7 @@ ModeTab:Dropdown({
     Items = DungeonTypes,
     Callback = function(val)
         getgenv().DungeonType = val
+        markConfigDirty()
     end,
 })
 
@@ -984,6 +1152,7 @@ ModeTab:Toggle({
     Callback = function(state)
         getgenv().IsBossRush = state
         setStatus(state and "⚡ Boss Rush ON" or "Boss Rush OFF")
+        markConfigDirty()
     end,
 })
 
@@ -995,6 +1164,7 @@ ModeTab:Toggle({
     Callback = function(state)
         getgenv().IsDungeonQuest = state
         setStatus(state and "🔮 Dungeon Quest ON" or "DQ OFF")
+        markConfigDirty()
     end,
 })
 
@@ -1004,6 +1174,7 @@ ModeTab:Toggle({
     Callback = function(state)
         getgenv().IsHogyokuQuest = state
         setStatus(state and "🔮 Hogyoku Quest ON" or "HQ OFF")
+        markConfigDirty()
     end,
 })
 
@@ -1019,6 +1190,7 @@ for _, key in ipairs({"Z", "X", "C", "V", "F"}) do
         Default = false,
         Callback = function(state)
             getgenv().AutoSkills[key] = state
+            markConfigDirty()
         end,
     })
 end
@@ -1030,13 +1202,14 @@ SkillTab:Toggle({
         for _, k in ipairs({"Z","X","C","V","F"}) do
             getgenv().AutoSkills[k] = state
         end
+        markConfigDirty()
     end,
 })
 
 SkillTab:Slider({
     Name = "⏱️ Skill Cooldown (ms)",
     Min = 100, Max = 3000, Default = 500,
-    Callback = function(val) getgenv().SkillCooldown = val / 1000 end,
+    Callback = function(val) getgenv().SkillCooldown = val / 1000; markConfigDirty() end,
 })
 
 SkillTab:Section("⬛ Haki")
@@ -1072,6 +1245,7 @@ ItemTab:Toggle({
     Callback = function(state)
         getgenv().IsAutoChest = state
         setStatus(state and "📦 Auto Chest ON" or "Chest OFF")
+        markConfigDirty()
     end,
 })
 
@@ -1082,6 +1256,7 @@ ItemTab:Toggle({
     Default = false,
     Callback = function(state)
         getgenv().IsAutoMerchant = state
+        markConfigDirty()
     end,
 })
 
@@ -1090,10 +1265,238 @@ ItemTab:Dropdown({
     Items = {"HealthPotion", "StaminaPotion", "BoostScroll", "SummonStone"},
     Callback = function(val)
         getgenv().MerchantItem = val
+        markConfigDirty()
     end,
 })
 
--- ─── TAB 6: ⚙️ Settings ───
+-- ─── TAB 6: 🌍 Teleport ───
+local TeleportTab = GUI:Tab({ Name = "🌍 Teleport" })
+
+TeleportTab:Section("🏝️ Island Teleport")
+
+-- Build island list from autoLevelRanges
+autoLearnIslandLevels()
+local _islandNames = {}
+for zoneId, rangeData in pairs(autoLevelRanges) do
+    table.insert(_islandNames, string.format("[Lv.%d-%d] %s", rangeData.MinLevel, rangeData.MaxLevel, zoneId))
+end
+table.sort(_islandNames)
+if #_islandNames == 0 then
+    _islandNames = {"StarterIsland", "Island2", "Island3"}
+end
+
+TeleportTab:Dropdown({
+    Name = "🏝️ Chọn Đảo",
+    Items = _islandNames,
+    Callback = function(val)
+        -- Extract zone name from "[Lv.X-Y] ZoneName"
+        local zoneName = val:match("%] (.+)$") or val
+        getgenv().SelectedIsland = zoneName
+        markConfigDirty()
+    end,
+})
+
+TeleportTab:Button({
+    Name = "🚀 Teleport Now",
+    Callback = function()
+        local island = getgenv().SelectedIsland
+        if not island then
+            setStatus("⚠️ Chọn đảo trước!")
+            return
+        end
+        setStatus("🌍 Teleporting to: " .. island)
+        pcall(function()
+            local portalArg = island:gsub("Island", ""):gsub(" ", "")
+            RepStorage:WaitForChild("Remotes"):WaitForChild("TeleportToPortal"):FireServer(portalArg)
+        end)
+        task.wait(2)
+        hasLearned = false
+        autoLearnIslandLevels()
+        buildMobDatabase()
+        setStatus("✅ Teleported to: " .. island)
+    end,
+})
+
+TeleportTab:Section("🔄 Quick Teleport")
+
+TeleportTab:Button({
+    Name = "🏠 Về Starter Island",
+    Callback = function()
+        setStatus("🏠 Teleporting to Starter...")
+        pcall(function()
+            RepStorage:WaitForChild("Remotes"):WaitForChild("TeleportToPortal"):FireServer("Starter")
+        end)
+        task.wait(2)
+        setStatus("✅ Đã về Starter Island")
+    end,
+})
+
+TeleportTab:Button({
+    Name = "📍 TP đến Quest hiện tại",
+    Callback = function()
+        local _, _, choosenpc = getTargetQuest()
+        if choosenpc then
+            local currentLevel = player.Data.Level.Value
+            teleportToIsland(currentLevel, choosenpc)
+            setStatus("📍 TP to quest mob: " .. choosenpc)
+        else
+            setStatus("⚠️ Không tìm thấy quest phù hợp level")
+        end
+    end,
+})
+
+TeleportTab:Button({
+    Name = "🔄 Refresh Island List",
+    Callback = function()
+        hasLearned = false
+        autoLearnIslandLevels()
+        local count = 0
+        for _ in pairs(autoLevelRanges) do count = count + 1 end
+        setStatus(string.format("✅ Found %d islands", count))
+    end,
+})
+
+-- ─── TAB 7: 📊 Stats ───
+local StatsTab = GUI:Tab({ Name = "📊 Stats" })
+
+StatsTab:Section("📊 Farm Statistics")
+
+-- Initialize stats on first load
+if not getgenv()._statsInitialized then
+    pcall(function()
+        getgenv()._statsStartLevel = player.Data.Level.Value
+        local expVal = player.Data:FindFirstChild("EXP") or player.Data:FindFirstChild("Exp") or player.Data:FindFirstChild("Experience")
+        if expVal then getgenv()._statsStartEXP = expVal.Value end
+        local beliVal = player.Data:FindFirstChild("Beli") or player.Data:FindFirstChild("Gold") or player.Data:FindFirstChild("Money") or player.Data:FindFirstChild("Cash")
+        if beliVal then getgenv()._statsStartBeli = beliVal.Value end
+    end)
+    getgenv()._statsStartTime  = os.time()
+    getgenv()._statsInitialized = true
+end
+
+local function formatUptime(seconds)
+    local h = math.floor(seconds / 3600)
+    local m = math.floor((seconds % 3600) / 60)
+    local s = seconds % 60
+    return string.format("%02d:%02d:%02d", h, m, s)
+end
+
+local function getStatsText()
+    local elapsed = os.time() - getgenv()._statsStartTime
+    local kills = getgenv()._statsTotalKills
+    local bossK = getgenv()._statsBossKills
+    local kpm = elapsed > 0 and math.floor(kills / (elapsed / 60) * 10) / 10 or 0
+
+    local currentEXP = 0
+    local currentBeli = 0
+    local currentLevel = 0
+    pcall(function()
+        currentLevel = player.Data.Level.Value
+        local expVal = player.Data:FindFirstChild("EXP") or player.Data:FindFirstChild("Exp") or player.Data:FindFirstChild("Experience")
+        if expVal then currentEXP = expVal.Value end
+        local beliVal = player.Data:FindFirstChild("Beli") or player.Data:FindFirstChild("Gold") or player.Data:FindFirstChild("Money") or player.Data:FindFirstChild("Cash")
+        if beliVal then currentBeli = beliVal.Value end
+    end)
+
+    local expGained = currentEXP - getgenv()._statsStartEXP
+    local beliGained = currentBeli - getgenv()._statsStartBeli
+    local levelsGained = currentLevel - getgenv()._statsStartLevel
+
+    return {
+        uptime = formatUptime(elapsed),
+        kills = kills,
+        bossKills = bossK,
+        kpm = kpm,
+        expGained = expGained,
+        beliGained = beliGained,
+        levelsGained = levelsGained,
+        currentLevel = currentLevel,
+    }
+end
+
+-- Stats display buttons (click to refresh)
+local _statsButtons = {}
+
+_statsButtons.uptime = StatsTab:Button({
+    Name = "⏱️ Uptime: 00:00:00",
+    Callback = function() end, -- updated by loop
+})
+
+_statsButtons.kills = StatsTab:Button({
+    Name = "💀 Kills: 0 (0/min)",
+    Callback = function() end,
+})
+
+_statsButtons.bossKills = StatsTab:Button({
+    Name = "🐉 Boss Kills: 0",
+    Callback = function() end,
+})
+
+StatsTab:Section("📈 Gains")
+
+_statsButtons.exp = StatsTab:Button({
+    Name = "✨ EXP Gained: 0",
+    Callback = function() end,
+})
+
+_statsButtons.beli = StatsTab:Button({
+    Name = "💰 Beli Gained: 0",
+    Callback = function() end,
+})
+
+_statsButtons.levels = StatsTab:Button({
+    Name = "📈 Levels Gained: 0 (Lv.?)",
+    Callback = function() end,
+})
+
+StatsTab:Section("🔧 Controls")
+
+StatsTab:Button({
+    Name = "🔄 Reset Stats",
+    Callback = function()
+        getgenv()._statsStartTime  = os.time()
+        getgenv()._statsTotalKills = 0
+        getgenv()._statsBossKills  = 0
+        pcall(function()
+            getgenv()._statsStartLevel = player.Data.Level.Value
+            local expVal = player.Data:FindFirstChild("EXP") or player.Data:FindFirstChild("Exp") or player.Data:FindFirstChild("Experience")
+            if expVal then getgenv()._statsStartEXP = expVal.Value end
+            local beliVal = player.Data:FindFirstChild("Beli") or player.Data:FindFirstChild("Gold") or player.Data:FindFirstChild("Money") or player.Data:FindFirstChild("Cash")
+            if beliVal then getgenv()._statsStartBeli = beliVal.Value end
+        end)
+        setStatus("📊 Stats reset!")
+    end,
+})
+
+-- Auto-update stats display every 5s
+task.spawn(function()
+    while true do
+        task.wait(5)
+        pcall(function()
+            local s = getStatsText()
+            if _statsButtons.uptime and _statsButtons.uptime.SetName then
+                _statsButtons.uptime:SetName("⏱️ Uptime: " .. s.uptime)
+            end
+            if _statsButtons.kills and _statsButtons.kills.SetName then
+                _statsButtons.kills:SetName(string.format("💀 Kills: %d (%.1f/min)", s.kills, s.kpm))
+            end
+            if _statsButtons.bossKills and _statsButtons.bossKills.SetName then
+                _statsButtons.bossKills:SetName("🐉 Boss Kills: " .. s.bossKills)
+            end
+            if _statsButtons.exp and _statsButtons.exp.SetName then
+                _statsButtons.exp:SetName("✨ EXP Gained: " .. tostring(s.expGained))
+            end
+            if _statsButtons.beli and _statsButtons.beli.SetName then
+                _statsButtons.beli:SetName("💰 Beli Gained: " .. tostring(s.beliGained))
+            end
+            if _statsButtons.levels and _statsButtons.levels.SetName then
+                _statsButtons.levels:SetName(string.format("📈 Levels: +%d (Lv.%d)", s.levelsGained, s.currentLevel))
+            end
+        end)
+    end
+end)
+
+-- ─── TAB 8: ⚙️ Settings ───
 local SettingsTab = GUI:Tab({ Name = "⚙️ Settings" })
 
 SettingsTab:Section("🔧 Combat")
@@ -1103,6 +1506,7 @@ SettingsTab:Dropdown({
     Items = {"Melee", "Fruit"},
     Callback = function(val)
         getgenv().WeaponMode = val
+        markConfigDirty()
     end,
 })
 
@@ -1114,6 +1518,7 @@ SettingsTab:Toggle({
     Callback = function(state)
         getgenv().IsNoclip = state
         setStatus(state and "👻 Noclip ON" or "Noclip OFF")
+        markConfigDirty()
     end,
 })
 
@@ -1158,6 +1563,38 @@ SettingsTab:Toggle({
                 end
             end)
         end
+    end,
+})
+
+SettingsTab:Section("💾 Config Save/Load")
+
+SettingsTab:Toggle({
+    Name = "💾 Auto Save (mỗi 30s)",
+    Default = true,
+    Callback = function(state)
+        _autoSaveEnabled = state
+        setStatus(state and "💾 Auto Save ON" or "Auto Save OFF")
+    end,
+})
+
+SettingsTab:Button({
+    Name = "💾 Save Config Now",
+    Callback = function()
+        saveConfig()
+    end,
+})
+
+SettingsTab:Button({
+    Name = "📂 Load Config",
+    Callback = function()
+        loadConfig()
+    end,
+})
+
+SettingsTab:Button({
+    Name = "🔄 Reset Config (Default)",
+    Callback = function()
+        resetConfig()
     end,
 })
 
@@ -1371,7 +1808,9 @@ task.spawn(function()
                         task.wait(getgenv().AttackCooldown)
                     end
 
-                    setStatus("✅ Hạ: " .. (mob and mob.Name or "mob"))
+                    -- ── Kill counter hook ──
+                    getgenv()._statsTotalKills = getgenv()._statsTotalKills + 1
+                    setStatus("✅ Hạ: " .. (mob and mob.Name or "mob") .. " | Total: " .. getgenv()._statsTotalKills)
                     task.wait(0.3)
                 end
             else
@@ -1401,9 +1840,9 @@ task.spawn(function()
 end)
 
 GUI:Notify({
-    Title = "✦ Sailor Piece Hub v4",
-    Text = "Full Edition loaded! F2/V=Farm B=Boss N=Summon M=Skills",
+    Title = "✦ Sailor Piece Hub v4+",
+    Text = "Full Edition loaded! 8 Tabs | Stats + Teleport | F2/V=Farm B=Boss N=Summon M=Skills",
     Duration = 5,
 })
 
-print("✅ Sailor Piece Hub v4 loaded! (Full Edition | 6 Tabs | Priority Loop)")
+print("✅ Sailor Piece Hub v4+ loaded! (Full Edition | 8 Tabs | Stats + Teleport | Priority Loop)")
