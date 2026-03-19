@@ -311,16 +311,24 @@ task.spawn(function()
                     local character = Player.Character
                     local root = character and character:FindFirstChild("HumanoidRootPart")
                     if root then
-                        local targetPos = getFarmPosition(npcRoot)
-                        local dist = (root.Position - targetPos.Position).Magnitude
+                        local farmPos = getFarmPosition(npcRoot)
+                        local dist = (root.Position - farmPos.Position).Magnitude
 
-                        -- Tween đến mob nếu còn xa
+                        -- Tween đến vị trí farm nếu còn xa
                         if dist > 3 then
-                            tweenTo(targetPos)
+                            tweenTo(farmPos)
                         end
 
-                        -- Spam attack
-                        spamAttack()
+                        if farmMode == "Above" then
+                            -- Snap xuống vị trí mob → fire hit → snap lại lên
+                            local savedCFrame = root.CFrame
+                            root.CFrame = npcRoot.CFrame * CFrame.new(0, 0, farmDistance)
+                            spamAttack()
+                            root.CFrame = savedCFrame
+                        else
+                            -- Behind: đánh bình thường
+                            spamAttack()
+                        end
                     end
                 end
             end
