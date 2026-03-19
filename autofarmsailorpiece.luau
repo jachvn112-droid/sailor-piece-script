@@ -488,13 +488,15 @@ local function buildMobDatabase()
     if npcFolder then
         for _, npc in ipairs(npcFolder:GetChildren()) do
             if npc:IsA("Model") and npc:FindFirstChild("HumanoidRootPart") then
-                local npcName = npc.Name
-                if not seenTypes[npcName] then
-                    seenTypes[npcName] = true
+                -- Strip trailing digits to group (Thief1, Thief2 → Thief)
+                local baseName = npc.Name:match("^(.-)%d*$") or npc.Name
+                if baseName == "" then baseName = npc.Name end
+                if not seenTypes[baseName] then
+                    seenTypes[baseName] = true
                     local minLevel = 0
                     local maxLevel = "MAX"
                     for npcType, range in pairs(npcRangeMap) do
-                        if string.find(npcName, npcType) then
+                        if string.find(baseName, npcType) then
                             minLevel = range.min
                             maxLevel = range.max
                             break
@@ -508,7 +510,7 @@ local function buildMobDatabase()
                     end)
 
                     table.insert(MobDatabase, {
-                        name     = npcName,
+                        name     = baseName,
                         level    = minLevel,
                         minLevel = minLevel,
                         maxLevel = maxLevel,
