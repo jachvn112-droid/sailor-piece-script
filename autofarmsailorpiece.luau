@@ -98,7 +98,7 @@ end
 -- Layer 5: getgc scan — hook kick/ban functions in memory
 if getgc and hookfunction then
     for _, v in pairs(getgc(true)) do
-        if type(v) == "function" and not is_synapse_function(v) then
+        if type(v) == "function" then
             pcall(function()
                 local info = getinfo(v)
                 if info and info.source then

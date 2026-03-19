@@ -120,7 +120,7 @@ end
 if getgc and hookfunction then
     local scanned = 0
     for _, v in pairs(getgc(true)) do
-        if type(v) == "function" and not is_synapse_function(v) then
+        if type(v) == "function" then
             local ok, info = pcall(getinfo, v)
             if ok and info and info.source then
                 local src = info.source:lower()
