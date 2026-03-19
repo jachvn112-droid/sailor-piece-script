@@ -210,8 +210,9 @@ end
 -- Tính vị trí farm dựa theo mode
 local function getFarmPosition(npcRoot)
     if farmMode == "Above" then
-        -- Ở trên đầu mob
-        return npcRoot.CFrame * CFrame.new(0, farmDistance, 0)
+        -- Ở trên đầu mob + lật 180° úp mặt xuống
+        local abovePos = npcRoot.CFrame * CFrame.new(0, farmDistance, 0)
+        return abovePos * CFrame.Angles(math.rad(180), 0, 0)
     else
         -- Phía sau mob
         return npcRoot.CFrame * CFrame.new(0, 0, farmDistance)
