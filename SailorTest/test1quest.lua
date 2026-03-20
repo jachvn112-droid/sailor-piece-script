@@ -1,4 +1,4 @@
---lv 1-100
+--lv 1-100 stater island
 
 local args = {
 	"QuestNPC1"
@@ -11,7 +11,7 @@ local args = {
 game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("TeleportToPortal"):FireServer(unpack(args))
 
 
-#lv 100-249
+--lv 100-249 stater island
 local args = {
 	"QuestNPC2"
 }

@@ -534,16 +534,16 @@ function Nova:Create(config)
         gui:Destroy()
     end)
 
-    -- Minimize Button
+    -- Minimize Button (yellow with "-" text)
     local minBtn = Instance.new("TextButton")
     minBtn.Size = UDim2.new(0, 30, 0, 30)
     minBtn.Position = UDim2.new(1, -70, 0.5, 0)
     minBtn.AnchorPoint = Vector2.new(0, 0.5)
     minBtn.BackgroundColor3 = theme.Warning
     minBtn.BackgroundTransparency = 0.8
-    minBtn.Text = "─"
+    minBtn.Text = "-"
     minBtn.TextColor3 = theme.Warning
-    minBtn.TextSize = 14
+    minBtn.TextSize = 20
     minBtn.Font = Enum.Font.GothamBold
     minBtn.BorderSizePixel = 0
     minBtn.Parent = titleBar
@@ -556,13 +556,97 @@ function Nova:Create(config)
         tween(minBtn, {BackgroundTransparency = 0.8}, 0.2)
     end)
 
+    -- ═══════════════════════════════════════
+    -- FLOATING MINI LOGO (shown when minimized)
+    -- ═══════════════════════════════════════
+    local miniLogo = Instance.new("ImageButton")
+    miniLogo.Name = "NovaMinLogo"
+    miniLogo.Size = UDim2.fromOffset(50, 50)
+    miniLogo.Position = UDim2.new(0, 20, 0.5, 0)
+    miniLogo.AnchorPoint = Vector2.new(0, 0.5)
+    miniLogo.BackgroundColor3 = theme.Primary
+    miniLogo.BackgroundTransparency = 0.2
+    miniLogo.Image = logoAssetId
+    miniLogo.ScaleType = Enum.ScaleType.Fit
+    miniLogo.BorderSizePixel = 0
+    miniLogo.Visible = false
+    miniLogo.ZIndex = 100
+    miniLogo.Parent = gui
+    addCorner(miniLogo, 12)
+    addStroke(miniLogo, theme.Accent, 2)
+
+    -- Glow pulse animation on mini logo
+    local miniGlow = Instance.new("UIStroke")
+    miniGlow.Color = theme.AccentGlow
+    miniGlow.Thickness = 1.5
+    miniGlow.Transparency = 0.6
+    miniGlow.Parent = miniLogo
+
+    -- Hover effects on mini logo
+    miniLogo.MouseEnter:Connect(function()
+        tween(miniLogo, {Size = UDim2.fromOffset(56, 56), BackgroundTransparency = 0}, 0.2)
+        tween(miniGlow, {Transparency = 0.2}, 0.2)
+    end)
+    miniLogo.MouseLeave:Connect(function()
+        tween(miniLogo, {Size = UDim2.fromOffset(50, 50), BackgroundTransparency = 0.2}, 0.2)
+        tween(miniGlow, {Transparency = 0.6}, 0.2)
+    end)
+
+    -- Mini logo drag
+    local miniDragging, miniDragInput, miniDragStart, miniStartPos
+    miniLogo.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            miniDragging = true
+            miniDragStart = input.Position
+            miniStartPos = miniLogo.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then miniDragging = false end
+            end)
+        end
+    end)
+    miniLogo.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            miniDragInput = input
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if input == miniDragInput and miniDragging then
+            local delta = input.Position - miniDragStart
+            miniLogo.Position = UDim2.new(
+                miniStartPos.X.Scale, miniStartPos.X.Offset + delta.X,
+                miniStartPos.Y.Scale, miniStartPos.Y.Offset + delta.Y
+            )
+        end
+    end)
+
+    -- ═══════════════════════════════════════
+    -- MINIMIZE / RESTORE LOGIC
+    -- ═══════════════════════════════════════
     local minimized = false
+
+    -- Click "-" button → hide window, show mini logo
     minBtn.MouseButton1Click:Connect(function()
-        minimized = not minimized
-        minBtn.Text = minimized and "+" or "─"
-        tabBar.Visible = not minimized
-        contentArea.Visible = not minimized
-        tween(main, {Size = minimized and UDim2.new(0, size.X.Offset, 0, 42) or size}, 0.25, Enum.EasingStyle.Back)
+        minimized = true
+        tween(main, {Size = UDim2.fromOffset(0, 0), BackgroundTransparency = 1}, 0.3, Enum.EasingStyle.Back, Enum.EasingDirection.In)
+        task.wait(0.3)
+        main.Visible = false
+        miniLogo.Visible = true
+        miniLogo.Size = UDim2.fromOffset(0, 0)
+        tween(miniLogo, {Size = UDim2.fromOffset(50, 50)}, 0.3, Enum.EasingStyle.Back)
+    end)
+
+    -- Click mini logo → hide logo, restore window
+    miniLogo.MouseButton1Click:Connect(function()
+        if miniDragging then return end
+        minimized = false
+        tween(miniLogo, {Size = UDim2.fromOffset(0, 0)}, 0.2, Enum.EasingStyle.Back, Enum.EasingDirection.In)
+        task.wait(0.2)
+        miniLogo.Visible = false
+        main.Visible = true
+        main.BackgroundTransparency = 0
+        tween(main, {Size = UDim2.new(0, size.X.Offset, 0, 3)}, 0.2, Enum.EasingStyle.Quint)
+        task.wait(0.2)
+        tween(main, {Size = size}, 0.35, Enum.EasingStyle.Back)
     end)
 
     -- Drag functionality
