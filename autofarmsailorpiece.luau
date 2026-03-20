@@ -806,27 +806,99 @@ Tab:Slider({
     end
 })
 
--- ═══════════════════════════════════════
--- BOSS HELPERS (shared by both modes)
--- ═══════════════════════════════════════
+-- ═══════════════════════════════════════════════════════════════
+-- ║           BOSS TRACKER (Event-Driven, like xeno.lua)        ║
+-- ║  Track boss alive/dead bằng events — KHÔNG CẦN tele đảo    ║
+-- ║  để check. Biết boss nào alive ngay từ xa!                  ║
+-- ═══════════════════════════════════════════════════════════════
 
--- Helper: Tìm boss còn sống trong workspace.NPCs
-local function findBossByName(bossName)
-    local npcsFolder = workspace:FindFirstChild("NPCs")
-    if not npcsFolder then return nil end
-    for _, npc in pairs(npcsFolder:GetChildren()) do
-        if npc.Name == bossName or npc.Name:find(bossName) then
-            local hum = npc:FindFirstChildOfClass("Humanoid")
-            local root = npc:FindFirstChild("HumanoidRootPart")
-            if hum and root and hum.Health > 0 then
-                return npc
-            end
+local BossTracker = {
+    Active = {},    -- { [bossName] = npcModel } — chỉ boss đang alive
+    _connections = {} -- cleanup connections
+}
+
+-- Kiểm tra NPC có phải boss trong config không (tên match)
+local function isBossNPC(npcName)
+    for bossName, _ in pairs(timedBossConfig) do
+        if npcName == bossName or npcName:find(bossName) then
+            return bossName
         end
     end
     return nil
 end
 
--- Helper: Lấy danh sách boss đã chọn, sort theo khoảng cách tới player
+-- Register 1 NPC vào tracker (nếu là boss + alive)
+local function registerBossNPC(npc)
+    if not npc:IsA("Model") then return end
+    local bossName = isBossNPC(npc.Name)
+    if not bossName then return end
+
+    local hum = npc:FindFirstChildOfClass("Humanoid")
+    local root = npc:FindFirstChild("HumanoidRootPart")
+    if not hum or not root then return end
+
+    -- Chỉ track nếu alive
+    if hum.Health <= 0 then return end
+
+    BossTracker.Active[bossName] = npc
+    print("[BossTracker] ✅ Registered: " .. bossName .. " (HP: " .. hum.Health .. ")")
+
+    -- Khi boss chết → xóa khỏi tracker
+    local diedConn
+    diedConn = hum.Died:Connect(function()
+        BossTracker.Active[bossName] = nil
+        print("[BossTracker] ❌ Died: " .. bossName)
+        if diedConn then diedConn:Disconnect() end
+    end)
+    table.insert(BossTracker._connections, diedConn)
+
+    -- Khi boss bị xóa khỏi workspace → xóa khỏi tracker
+    local ancestryConn
+    ancestryConn = npc.AncestryChanged:Connect(function(_, parent)
+        if not parent then
+            BossTracker.Active[bossName] = nil
+            print("[BossTracker] 🗑 Removed: " .. bossName)
+            if ancestryConn then ancestryConn:Disconnect() end
+        end
+    end)
+    table.insert(BossTracker._connections, ancestryConn)
+end
+
+-- Init: scan tất cả NPCs hiện có + lắng nghe NPCs mới spawn
+local function initBossTracker()
+    local npcsFolder = workspace:FindFirstChild("NPCs")
+    if not npcsFolder then
+        -- Đợi NPCs folder xuất hiện
+        npcsFolder = workspace:WaitForChild("NPCs", 30)
+        if not npcsFolder then
+            warn("[BossTracker] NPCs folder not found!")
+            return
+        end
+    end
+
+    -- Scan NPCs hiện có
+    for _, npc in pairs(npcsFolder:GetChildren()) do
+        registerBossNPC(npc)
+    end
+
+    -- Lắng nghe NPCs mới spawn (boss respawn)
+    local addConn = npcsFolder.ChildAdded:Connect(function(npc)
+        task.wait(0.1) -- Đợi Humanoid/HumanoidRootPart load
+        registerBossNPC(npc)
+    end)
+    table.insert(BossTracker._connections, addConn)
+
+    print("[BossTracker] Initialized! Tracking " .. tostring(#npcsFolder:GetChildren()) .. " NPCs")
+end
+
+-- Khởi động tracker ngay
+task.spawn(initBossTracker)
+
+-- ═══════════════════════════════════════
+-- BOSS HELPERS (shared by both modes)
+-- ═══════════════════════════════════════
+
+-- Helper: Lấy danh sách boss đã chọn + ALIVE (từ tracker), sort theo khoảng cách
 local function getSortedSelectedBosses()
     local char = Player.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
@@ -836,13 +908,27 @@ local function getSortedSelectedBosses()
     for bossName, _ in pairs(selectedBosses) do
         local config = timedBossConfig[bossName]
         if config then
+            -- ★ CHECK TRACKER: boss đang alive không?
+            local npc = BossTracker.Active[bossName]
+            local isAlive = false
+            if npc then
+                local hum = npc:FindFirstChildOfClass("Humanoid")
+                isAlive = hum and hum.Health > 0
+            end
             local dist = (root.Position - config.cframe.Position).Magnitude
-            table.insert(bossList, { name = bossName, config = config, distance = dist })
+            table.insert(bossList, {
+                name = bossName,
+                config = config,
+                distance = dist,
+                alive = isAlive,
+                npc = npc
+            })
         end
     end
 
-    -- Sort: gần nhất trước
+    -- Sort: alive trước, rồi gần nhất trước
     table.sort(bossList, function(a, b)
+        if a.alive ~= b.alive then return a.alive end
         return a.distance < b.distance
     end)
 
@@ -874,11 +960,13 @@ local function bossAutoEquip(char)
     end
 end
 
--- ═══════════════════════════════════════
--- ★ LOOP A: TWEEN BOSS FARM
--- Teleport đảo → Tween mượt tới boss → Attack
--- (Giống cách farm mob Behind mode)
--- ═══════════════════════════════════════
+-- ═══════════════════════════════════════════════════════════════
+-- ★ LOOP A: TWEEN BOSS FARM (CẢI TIẾN VỚI BOSS TRACKER)
+-- ★ KHÔNG tele từng đảo để check — dùng tracker biết boss alive từ xa
+-- ★ Flow: Tracker biết boss alive → Tele tới đảo đó 1 lần → Tween tới boss → Attack
+-- ═══════════════════════════════════════════════════════════════
+local lastBossTeleportedIsland = nil -- Track đảo đã tele rồi (tránh spam tele)
+
 task.spawn(function()
     while task.wait(bossTweenSpeed) do
         if not bossFarmTweenEnabled then continue end
@@ -894,46 +982,51 @@ task.spawn(function()
         for _, bossInfo in ipairs(sortedBosses) do
             if not bossFarmTweenEnabled then break end
 
+            -- ★ CHỈ FARM BOSS ĐANG ALIVE (theo tracker)
+            if not bossInfo.alive or not bossInfo.npc then continue end
+
             local bossName = bossInfo.name
             local config = bossInfo.config
+            local bossNPC = bossInfo.npc
 
-            local bossNPC = findBossByName(bossName)
-            if bossNPC then
-                local bossRoot = bossNPC:FindFirstChild("HumanoidRootPart")
-                local bossHum = bossNPC:FindFirstChildOfClass("Humanoid")
-                if bossRoot and bossHum and bossHum.Health > 0 then
-                    -- Teleport tới đảo nếu quá xa (dùng teleportToIsland)
-                    local distance = (root.Position - bossRoot.Position).Magnitude
-                    if distance > 150 and config.remote then
-                        teleportToIsland(config.remote)
-                        task.wait(0.5)
-                    end
+            local bossRoot = bossNPC:FindFirstChild("HumanoidRootPart")
+            local bossHum = bossNPC:FindFirstChildOfClass("Humanoid")
+            if not bossRoot or not bossHum or bossHum.Health <= 0 then continue end
 
-                    -- Tween mượt tới vị trí farm boss
-                    local goal = bossGetGoal(bossRoot)
-                    local dist = (root.Position - goal.Position).Magnitude
-                    if dist > 3 then
-                        tweenTo(goal)
-                    end
-
-                    -- Auto equip + attack
-                    bossAutoEquip(char)
-                    spamAttack(bossRoot.Position)
-
-                    farmedAny = true
-                    break -- Farm boss gần nhất, loop lại re-sort
+            -- ★ CHỈ TELEPORT ĐẢO KHI CẦN (chưa ở đảo đó hoặc quá xa)
+            local distToBoss = (root.Position - bossRoot.Position).Magnitude
+            if distToBoss > 150 and config.remote then
+                if lastBossTeleportedIsland ~= config.remote then
+                    teleportToIsland(config.remote)
+                    lastBossTeleportedIsland = config.remote
+                    task.wait(1) -- Đợi teleport xong
                 end
             end
+
+            -- Tween mượt tới vị trí farm boss
+            local goal = bossGetGoal(bossRoot)
+            local dist = (root.Position - goal.Position).Magnitude
+            if dist > 3 then
+                tweenTo(goal)
+            end
+
+            -- Auto equip + attack
+            bossAutoEquip(char)
+            spamAttack(bossRoot.Position)
+
+            farmedAny = true
+            break -- Farm boss này, loop lại re-sort
         end
 
-        -- Không có boss nào alive → tween tới spawn đầu tiên đợi respawn
+        -- Không có boss nào alive → đợi ở spawn boss đầu tiên
         if not farmedAny and #sortedBosses > 0 then
             local firstBoss = sortedBosses[1]
             local config = firstBoss.config
-            local distance = (root.Position - config.cframe.Position).Magnitude
 
-            if distance > 150 and config.remote then
+            -- Đã chắc chắn không boss nào alive → tele tới đảo đầu tiên đợi respawn
+            if config.remote and lastBossTeleportedIsland ~= config.remote then
                 teleportToIsland(config.remote)
+                lastBossTeleportedIsland = config.remote
                 task.wait(0.5)
             end
 
@@ -984,6 +1077,8 @@ local function bossDestabilize(root)
 end
 
 task.spawn(function()
+    local lastXenoBossTeleportedIsland = nil
+
     while task.wait(bossXenoSpeed) do
         if not bossFarmXenoEnabled then continue end
 
@@ -998,49 +1093,51 @@ task.spawn(function()
         for _, bossInfo in ipairs(sortedBosses) do
             if not bossFarmXenoEnabled then break end
 
+            -- ★ CHỈ FARM BOSS ĐANG ALIVE (theo tracker)
+            if not bossInfo.alive or not bossInfo.npc then continue end
+
             local bossName = bossInfo.name
             local config = bossInfo.config
+            local bossNPC = bossInfo.npc
 
-            local bossNPC = findBossByName(bossName)
-            if bossNPC then
-                local bossRoot = bossNPC:FindFirstChild("HumanoidRootPart")
-                local bossHum = bossNPC:FindFirstChildOfClass("Humanoid")
-                if bossRoot and bossHum and bossHum.Health > 0 then
-                    -- ★ BYPASS: TeleportToPortal trước nếu quá xa
-                    local distance = (root.Position - bossRoot.Position).Magnitude
-                    if distance > 150 and config.remote then
-                        local TpRemoteBoss = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("TeleportToPortal")
-                        if TpRemoteBoss then
-                            pcall(function() TpRemoteBoss:FireServer(config.remote) end)
-                            task.wait(0.3)
-                        end
-                    end
+            local bossRoot = bossNPC:FindFirstChild("HumanoidRootPart")
+            local bossHum = bossNPC:FindFirstChildOfClass("Humanoid")
+            if not bossRoot or not bossHum or bossHum.Health <= 0 then continue end
 
-                    -- Tính vị trí farm + stabilize + CFrame trực tiếp
-                    local goal = bossGetGoal(bossRoot)
-                    bossStabilize(root, goal)
-                    root.CFrame = goal
-
-                    -- Auto equip + attack
-                    bossAutoEquip(char)
-                    spamAttack(bossRoot.Position)
-
-                    farmedAny = true
-                    break -- Farm boss gần nhất, loop lại re-sort
+            -- ★ Teleport tới đảo boss (giữ nguyên xeno style)
+            local distToBoss = (root.Position - bossRoot.Position).Magnitude
+            if distToBoss > 150 and config.remote then
+                local TpRemoteBoss = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("TeleportToPortal")
+                if TpRemoteBoss then
+                    pcall(function() TpRemoteBoss:FireServer(config.remote) end)
+                    lastXenoBossTeleportedIsland = config.remote
+                    task.wait(0.5)
                 end
             end
+
+            -- CFrame trực tiếp tới boss + stabilize
+            local goal = bossGetGoal(bossRoot)
+            bossStabilize(root, goal)
+            root.CFrame = goal
+
+            -- Auto equip + attack
+            bossAutoEquip(char)
+            spamAttack(bossRoot.Position)
+
+            farmedAny = true
+            break -- Farm boss này, loop lại re-sort
         end
 
         -- Không có boss nào alive → CFrame tới spawn đầu tiên đợi respawn
         if not farmedAny and #sortedBosses > 0 then
             local firstBoss = sortedBosses[1]
             local config = firstBoss.config
-            local distance = (root.Position - config.cframe.Position).Magnitude
 
-            if distance > 150 and config.remote then
+            if config.remote and lastXenoBossTeleportedIsland ~= config.remote then
                 local TpRemoteBoss = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("TeleportToPortal")
                 if TpRemoteBoss then
                     pcall(function() TpRemoteBoss:FireServer(config.remote) end)
+                    lastXenoBossTeleportedIsland = config.remote
                     task.wait(0.3)
                 end
             end

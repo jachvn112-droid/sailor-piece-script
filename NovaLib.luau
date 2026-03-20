@@ -1012,6 +1012,9 @@ function Nova:Create(config)
         function Tab:Dropdown(config)
             local items = config.Items or {}
             local isOpen = false
+            local isMulti = config.MultiSelect == true
+            local multiSelected = {} -- { ["Gojo"] = true, ["Sukuna"] = true }
+            local defaultName = config.Name or "Select..."
 
             local frame = Instance.new("Frame")
             frame.Size = UDim2.new(1, 0, 0, 36)
@@ -1032,11 +1035,12 @@ function Nova:Create(config)
             label.Size = UDim2.new(1, -36, 1, 0)
             label.Position = UDim2.new(0, 12, 0, 0)
             label.BackgroundTransparency = 1
-            label.Text = config.Name or "Select..."
+            label.Text = defaultName
             label.TextColor3 = theme.Text
             label.TextSize = 13
             label.Font = Enum.Font.GothamMedium
             label.TextXAlignment = Enum.TextXAlignment.Left
+            label.TextTruncate = Enum.TextTruncate.AtEnd
             label.Parent = btn
 
             local arrow = Instance.new("TextLabel")
@@ -1049,6 +1053,34 @@ function Nova:Create(config)
             arrow.Font = Enum.Font.GothamBold
             arrow.Parent = btn
 
+            -- Helper: update label for multi-select
+            local function updateMultiLabel()
+                local names = {}
+                for _, itm in pairs(items) do
+                    if multiSelected[tostring(itm)] then
+                        table.insert(names, tostring(itm))
+                    end
+                end
+                if #names == 0 then
+                    label.Text = defaultName
+                else
+                    label.Text = table.concat(names, ", ")
+                end
+            end
+
+            -- Helper: update visual state for a multi-select button
+            local function updateItemVisual(itemBtn, itemName)
+                if multiSelected[itemName] then
+                    itemBtn.Text = "✓ " .. itemName
+                    itemBtn.TextColor3 = theme.Accent
+                    itemBtn.BackgroundTransparency = 0.1
+                else
+                    itemBtn.Text = itemName
+                    itemBtn.TextColor3 = theme.SubText
+                    itemBtn.BackgroundTransparency = 0.3
+                end
+            end
+
             local itemContainer = Instance.new("Frame")
             itemContainer.Size = UDim2.new(1, -8, 0, #items * 30)
             itemContainer.Position = UDim2.new(0, 4, 0, 40)
@@ -1060,33 +1092,67 @@ function Nova:Create(config)
             itemLayout.Padding = UDim.new(0, 2)
             itemLayout.Parent = itemContainer
 
-            for _, item in pairs(items) do
-                local itemBtn = Instance.new("TextButton")
-                itemBtn.Size = UDim2.new(1, 0, 0, 28)
-                itemBtn.BackgroundColor3 = theme.Primary
-                itemBtn.BackgroundTransparency = 0.3
-                itemBtn.Text = tostring(item)
-                itemBtn.TextColor3 = theme.SubText
-                itemBtn.TextSize = 12
-                itemBtn.Font = Enum.Font.Gotham
-                itemBtn.BorderSizePixel = 0
-                itemBtn.Parent = itemContainer
-                addCorner(itemBtn, 6)
+            -- Build item buttons
+            local function buildItems()
+                for _, child in ipairs(itemContainer:GetChildren()) do
+                    if child:IsA("TextButton") then child:Destroy() end
+                end
+                itemContainer.Size = UDim2.new(1, -8, 0, #items * 30)
 
-                itemBtn.MouseEnter:Connect(function()
-                    tween(itemBtn, {BackgroundTransparency = 0, TextColor3 = theme.Accent}, 0.15)
-                end)
-                itemBtn.MouseLeave:Connect(function()
-                    tween(itemBtn, {BackgroundTransparency = 0.3, TextColor3 = theme.SubText}, 0.15)
-                end)
-                itemBtn.MouseButton1Click:Connect(function()
-                    label.Text = tostring(item)
-                    isOpen = false
-                    tween(frame, {Size = UDim2.new(1, 0, 0, 36)}, 0.25, Enum.EasingStyle.Back)
-                    arrow.Text = "▼"
-                    if config.Callback then config.Callback(item) end
-                end)
+                for _, item in pairs(items) do
+                    local itemName = tostring(item)
+                    local itemBtn = Instance.new("TextButton")
+                    itemBtn.Size = UDim2.new(1, 0, 0, 28)
+                    itemBtn.BackgroundColor3 = theme.Primary
+                    itemBtn.BackgroundTransparency = 0.3
+                    itemBtn.Text = itemName
+                    itemBtn.TextColor3 = theme.SubText
+                    itemBtn.TextSize = 12
+                    itemBtn.Font = Enum.Font.Gotham
+                    itemBtn.BorderSizePixel = 0
+                    itemBtn.Parent = itemContainer
+                    addCorner(itemBtn, 6)
+
+                    if isMulti then
+                        -- Apply initial visual state for multi-select
+                        updateItemVisual(itemBtn, itemName)
+
+                        itemBtn.MouseEnter:Connect(function()
+                            if not multiSelected[itemName] then
+                                tween(itemBtn, {BackgroundTransparency = 0, TextColor3 = theme.Accent}, 0.15)
+                            end
+                        end)
+                        itemBtn.MouseLeave:Connect(function()
+                            updateItemVisual(itemBtn, itemName)
+                        end)
+                        itemBtn.MouseButton1Click:Connect(function()
+                            -- Toggle selection
+                            multiSelected[itemName] = not multiSelected[itemName] or nil
+                            updateItemVisual(itemBtn, itemName)
+                            updateMultiLabel()
+                            -- Callback fires with the toggled item name (string)
+                            if config.Callback then config.Callback(itemName) end
+                        end)
+                    else
+                        -- Single-select (original behavior)
+                        itemBtn.MouseEnter:Connect(function()
+                            tween(itemBtn, {BackgroundTransparency = 0, TextColor3 = theme.Accent}, 0.15)
+                        end)
+                        itemBtn.MouseLeave:Connect(function()
+                            tween(itemBtn, {BackgroundTransparency = 0.3, TextColor3 = theme.SubText}, 0.15)
+                        end)
+                        itemBtn.MouseButton1Click:Connect(function()
+                            label.Text = itemName
+                            isOpen = false
+                            tween(frame, {Size = UDim2.new(1, 0, 0, 36)}, 0.25, Enum.EasingStyle.Back)
+                            arrow.Text = "▼"
+                            if config.Callback then config.Callback(item) end
+                        end)
+                    end
+                end
             end
+
+            buildItems()
 
             btn.MouseButton1Click:Connect(function()
                 isOpen = not isOpen
@@ -1098,39 +1164,16 @@ function Nova:Create(config)
             return {
                 SetItems = function(_, newItems)
                     items = newItems
-                    -- Clear old items
-                    for _, child in ipairs(itemContainer:GetChildren()) do
-                        if child:IsA("TextButton") then child:Destroy() end
+                    if isMulti then
+                        -- Remove selections that no longer exist in new items
+                        local validNames = {}
+                        for _, itm in pairs(newItems) do validNames[tostring(itm)] = true end
+                        for name, _ in pairs(multiSelected) do
+                            if not validNames[name] then multiSelected[name] = nil end
+                        end
                     end
-                    itemContainer.Size = UDim2.new(1, -8, 0, #items * 30)
-                    -- Rebuild items
-                    for _, item in pairs(items) do
-                        local itemBtn = Instance.new("TextButton")
-                        itemBtn.Size = UDim2.new(1, 0, 0, 28)
-                        itemBtn.BackgroundColor3 = theme.Primary
-                        itemBtn.BackgroundTransparency = 0.3
-                        itemBtn.Text = tostring(item)
-                        itemBtn.TextColor3 = theme.SubText
-                        itemBtn.TextSize = 12
-                        itemBtn.Font = Enum.Font.Gotham
-                        itemBtn.BorderSizePixel = 0
-                        itemBtn.Parent = itemContainer
-                        addCorner(itemBtn, 6)
-
-                        itemBtn.MouseEnter:Connect(function()
-                            tween(itemBtn, {BackgroundTransparency = 0, TextColor3 = theme.Accent}, 0.15)
-                        end)
-                        itemBtn.MouseLeave:Connect(function()
-                            tween(itemBtn, {BackgroundTransparency = 0.3, TextColor3 = theme.SubText}, 0.15)
-                        end)
-                        itemBtn.MouseButton1Click:Connect(function()
-                            label.Text = tostring(item)
-                            isOpen = false
-                            tween(frame, {Size = UDim2.new(1, 0, 0, 36)}, 0.25, Enum.EasingStyle.Back)
-                            arrow.Text = "▼"
-                            if config.Callback then config.Callback(item) end
-                        end)
-                    end
+                    buildItems()
+                    if isMulti then updateMultiLabel() end
                     -- Collapse dropdown after refresh
                     if isOpen then
                         isOpen = false
