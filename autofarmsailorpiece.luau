@@ -606,3 +606,193 @@ Player.Backpack.ChildAdded:Connect(function(child)
         end
     end
 end)
+
+-- ═══════════════════════════════════════════════════════════════
+-- ║          XENO AUTO FARM (Bypass Anticheat Style)           ║
+-- ║  Dùng TeleportToPortal remote + CFrame trực tiếp          ║
+-- ║  + BodyVelocity/BodyGyro giữ vị trí                       ║
+-- ═══════════════════════════════════════════════════════════════
+
+local xenoFarmEnabled = false
+local xenoFarmSpeed = 0.1  -- delay giữa mỗi lần CFrame (giống TweenSpeed trong xeno)
+
+-- Remote references (cache 1 lần)
+local TpRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("TeleportToPortal")
+
+Tab:Section("Xeno Auto Farm (Bypass)")
+
+Tab:Toggle({
+    Name = "Xeno Auto Farm",
+    Default = false,
+    Callback = function(state)
+        xenoFarmEnabled = state
+        -- Tắt → cleanup stabilize
+        if not state then
+            local char = Player.Character
+            local root = char and char:FindFirstChild("HumanoidRootPart")
+            if root then
+                local bv = root:FindFirstChild("XenoStabBV")
+                local bg = root:FindFirstChild("XenoStabBG")
+                if bv then bv:Destroy() end
+                if bg then bg:Destroy() end
+            end
+        end
+        -- Tắt farm cũ khi bật xeno (tránh xung đột)
+        if state and autoFarmEnabled then
+            autoFarmEnabled = false
+            pcall(function() stopAboveLock() end)
+            print("[Xeno] Disabled old Auto Farm to avoid conflict")
+        end
+    end
+})
+
+Tab:Slider({
+    Name = "Xeno TP Speed (s)",
+    Min = 1,    -- 0.01s
+    Max = 50,   -- 0.5s
+    Default = 10, -- 0.1s
+    Callback = function(value)
+        xenoFarmSpeed = value / 100
+    end
+})
+
+-- Stabilize: thêm BodyVelocity + BodyGyro giữ character đứng yên (giống xeno DungeonFarmer)
+local function xenoStabilize(root, goalCFrame)
+    -- BodyVelocity: triệt tiêu mọi chuyển động
+    local bv = root:FindFirstChild("XenoStabBV")
+    if not bv then
+        bv = Instance.new("BodyVelocity")
+        bv.Name = "XenoStabBV"
+        bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+        bv.P = 100000
+        bv.Parent = root
+    end
+    bv.Velocity = Vector3.new(0, 0, 0)
+
+    -- BodyGyro: giữ hướng nhìn cố định
+    local bg = root:FindFirstChild("XenoStabBG")
+    if not bg then
+        bg = Instance.new("BodyGyro")
+        bg.Name = "XenoStabBG"
+        bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+        bg.D = 500
+        bg.P = 100000
+        bg.Parent = root
+    end
+    bg.CFrame = goalCFrame
+end
+
+-- Destabilize: xóa BodyMovers khi chuyển target
+local function xenoDestabilize(root)
+    local bv = root:FindFirstChild("XenoStabBV")
+    local bg = root:FindFirstChild("XenoStabBG")
+    if bv then bv:Destroy() end
+    if bg then bg:Destroy() end
+end
+
+-- Tính vị trí farm (giống _getGoal trong xeno)
+local function xenoGetGoal(npcRoot)
+    local dist = farmDistance
+    if farmMode == "Above" then
+        local pos = npcRoot.Position
+        return CFrame.new(pos + Vector3.new(0, dist, 0), pos)
+    else
+        -- Behind: đứng sau lưng NPC
+        return npcRoot.CFrame * CFrame.new(0, 2, dist)
+    end
+end
+
+-- XENO FARM: Loop teleport + quest (giống loop cũ nhưng riêng biệt)
+task.spawn(function()
+    while task.wait(2) do
+        if xenoFarmEnabled and selectedMob then
+            local config = mobConfig[selectedMob]
+            if config then
+                -- Check đang ở đảo đúng chưa
+                if not isOnIsland(config.workspaceFolder) then
+                    for attempt = 1, 5 do
+                        print("[Xeno] Teleport to " .. config.island .. " (attempt " .. attempt .. "/5)")
+                        pcall(function() TpRemote:FireServer(config.island) end)
+                        task.wait(3)
+                        if isOnIsland(config.workspaceFolder) then
+                            print("[Xeno] Arrived at " .. config.island)
+                            break
+                        end
+                    end
+                end
+                -- Accept quest
+                if isOnIsland(config.workspaceFolder) and not isQuestActive() then
+                    acceptQuest(config.quest)
+                end
+            end
+        end
+    end
+end)
+
+-- XENO FARM: Main farm loop (CFrame trực tiếp + TeleportToPortal bypass)
+task.spawn(function()
+    while task.wait(xenoFarmSpeed) do
+        if not xenoFarmEnabled or not selectedMob then continue end
+
+        local config = mobConfig[selectedMob]
+        if not config then continue end
+
+        local char = Player.Character
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        if not root then continue end
+
+        -- Tìm NPC gần nhất còn sống
+        local npc = findClosestNPC()
+        if not npc then
+            xenoDestabilize(root)
+            continue
+        end
+
+        local npcRoot = npc:FindFirstChild("HumanoidRootPart")
+        local npcHum = npc:FindFirstChildOfClass("Humanoid")
+        if not npcRoot or not npcHum or npcHum.Health <= 0 then
+            xenoDestabilize(root)
+            continue
+        end
+
+        -- Tính khoảng cách
+        local distance = (root.Position - npcRoot.Position).Magnitude
+
+        -- ★ BYPASS ANTICHEAT: Nếu quá xa (>150 studs) → fire TeleportToPortal TRƯỚC
+        -- Server sẽ chấp nhận vị trí mới, không kéo về chỗ cũ
+        if distance > 150 and config.island then
+            pcall(function() TpRemote:FireServer(config.island) end)
+            task.wait(0.3) -- Chờ server xử lý
+        end
+
+        -- Tính vị trí goal
+        local goal = xenoGetGoal(npcRoot)
+
+        -- Stabilize (giữ đứng yên bằng BodyVelocity + BodyGyro)
+        xenoStabilize(root, goal)
+
+        -- ★ TP TRỰC TIẾP bằng CFrame (không dùng Tween)
+        root.CFrame = goal
+
+        -- Auto equip weapon
+        if autoEquipEnabled and selectedWeapon then
+            local alreadyEquipped = char:FindFirstChild(selectedWeapon)
+            if not alreadyEquipped then
+                local tool = Player.Backpack:FindFirstChild(selectedWeapon)
+                local humanoid = char:FindFirstChildOfClass("Humanoid")
+                if tool and humanoid then
+                    humanoid:EquipTool(tool)
+                end
+            end
+        end
+
+        -- Spam attack vào vị trí NPC
+        spamAttack(npcRoot.Position)
+    end
+end)
+
+-- Cleanup stabilize khi character respawn
+Player.CharacterAdded:Connect(function()
+    task.wait(1)
+    -- BodyMovers tự mất khi character mới spawn, không cần cleanup
+end)
