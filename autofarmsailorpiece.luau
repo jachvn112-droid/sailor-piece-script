@@ -34,30 +34,53 @@ local mobQuestMap = {
 -- ═══════════════════════════════════════
 Tab:Section("Mob Settings")
 
+-- Display name → Internal name mapping
+local mobDisplayToInternal = {
+    ["Thief (Lv.10)"]              = "Thief",
+    ["Thief Boss (Lv.25)"]         = "ThiefBoss",
+    ["Monkey (Lv.250)"]            = "Monkey",
+    ["Monkey Boss (Lv.500)"]       = "MonkeyBoss",
+    ["Desert Bandit (Lv.750)"]     = "DesertBandit",
+    ["Desert Boss (Lv.1000)"]      = "DesertBoss",
+    ["Frost Rogue (Lv.1500)"]      = "FrostRogue",
+    ["Snow Boss (Lv.2000)"]        = "SnowBoss",
+    ["Sorcerer Student (Lv.3000)"] = "Sorcerer",
+    ["Panda Boss (Lv.4000)"]       = "PandaMiniBoss",
+    ["Hollow (Lv.5000)"]           = "Hollow",
+    ["Strong Sorcerer (Lv.6000)"]  = "StrongSorcerer",
+    ["Curse (Lv.7000)"]            = "Curse",
+    ["Slime (Lv.8000)"]            = "SlimeWarrior",
+    ["Academy Teacher (Lv.9000)"]  = "AcademyTeacher",
+    ["Swordsman (Lv.10000)"]       = "Swordsman",
+    ["Quincy (Lv.10750)"]          = "Quincy",
+}
+
+local mobDisplayList = {
+    "Thief (Lv.10)",
+    "Thief Boss (Lv.25)",
+    "Monkey (Lv.250)",
+    "Monkey Boss (Lv.500)",
+    "Desert Bandit (Lv.750)",
+    "Desert Boss (Lv.1000)",
+    "Frost Rogue (Lv.1500)",
+    "Snow Boss (Lv.2000)",
+    "Sorcerer Student (Lv.3000)",
+    "Panda Boss (Lv.4000)",
+    "Hollow (Lv.5000)",
+    "Strong Sorcerer (Lv.6000)",
+    "Curse (Lv.7000)",
+    "Slime (Lv.8000)",
+    "Academy Teacher (Lv.9000)",
+    "Swordsman (Lv.10000)",
+    "Quincy (Lv.10750)",
+}
+
 Tab:Dropdown({
     Name = "Select Mob",
-    Items = {
-        "Thief",          -- Lv 0
-        "ThiefBoss",      -- Lv 100
-        "Monkey",         -- Lv 250
-        "MonkeyBoss",     -- Lv 500
-        "DesertBandit",   -- Lv 750
-        "DesertBoss",     -- Lv 1000
-        "FrostRogue",     -- Lv 1500
-        "SnowBoss",       -- Lv 2000
-        "Sorcerer",       -- Lv 3000
-        "PandaMiniBoss",  -- Lv 4000
-        "Hollow",         -- Lv 5000
-        "StrongSorcerer", -- Lv 6250
-        "Curse",          -- Lv 7000
-        "SlimeWarrior",   -- Lv 8000
-        "AcademyTeacher", -- Lv 9000
-        "Swordsman",      -- Lv 10000
-        "Quincy"          -- Lv 10750
-    },
+    Items = mobDisplayList,
     Callback = function(selected)
-        selectedMob = selected
-        print("Selected mob: " .. selected)
+        selectedMob = mobDisplayToInternal[selected] or selected
+        print("Selected mob: " .. selectedMob .. " (" .. selected .. ")")
     end
 })
 
