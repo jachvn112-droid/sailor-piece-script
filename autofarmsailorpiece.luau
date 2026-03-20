@@ -23,6 +23,8 @@ local selectedWeapon = nil
 local tweenSpeed = 100
 local farmDistance = 5
 local farmMode = "Behind" -- Behind / Above
+local autoSkillEnabled = false
+local selectedSkillId = nil
 
 -- Forward declaration (defined later)
 local stopAboveLock
@@ -50,6 +52,7 @@ local mobConfig = {
     ["Slime"]          = { island = "Slime",    quest = "QuestNPC14", workspaceFolder = "SlimeIsland" },
     ["AcademyTeacher"] = { island = "Academy",  quest = "QuestNPC15", workspaceFolder = "AcademyIsland" },
     ["Swordsman"]      = { island = "Judgement", quest = "QuestNPC16", workspaceFolder = "JudgementIsland" },
+    ["Quincy"]         = { island = "SoulSociety", quest = "QuestNPC17", workspaceFolder = "SoulSocietyIsland" },
     -- Thêm mob mới:
     -- ["MobName"] = { island = "X", quest = "QuestNPCx", workspaceFolder = "XIsland" },
 }
@@ -157,6 +160,44 @@ Tab:Slider({
     Default = 5,
     Callback = function(value)
         farmDistance = value
+    end
+})
+
+-- ═══════════════════════════════════════
+-- SKILL SETTINGS
+-- ═══════════════════════════════════════
+Tab:Section("Skill Settings")
+
+local skillDisplayToId = {
+    ["F - Skill 1"] = 1,
+    ["X - Skill 2"] = 2,
+    ["C - Skill 3"] = 3,
+    ["V - Skill 4"] = 4,
+    ["F - Skill 5"] = 5,
+}
+
+local skillDisplayList = {
+    "F - Skill 1",
+    "X - Skill 2",
+    "C - Skill 3",
+    "V - Skill 4",
+    "F - Skill 5",
+}
+
+Tab:Dropdown({
+    Name = "Select Skill",
+    Items = skillDisplayList,
+    Callback = function(selected)
+        selectedSkillId = skillDisplayToId[selected]
+        print("Selected skill: " .. selected .. " (ID: " .. tostring(selectedSkillId) .. ")")
+    end
+})
+
+Tab:Toggle({
+    Name = "Auto Skill",
+    Default = false,
+    Callback = function(state)
+        autoSkillEnabled = state
     end
 })
 
@@ -579,6 +620,17 @@ task.spawn(function()
     end
 end)
 
+-- Loop 4: Auto Skill spam (mỗi 0.3s)
+task.spawn(function()
+    while task.wait(0.3) do
+        if autoSkillEnabled and selectedSkillId then
+            pcall(function()
+                ReplicatedStorage:WaitForChild("AbilitySystem"):WaitForChild("Remotes"):WaitForChild("RequestAbility"):FireServer(selectedSkillId)
+            end)
+        end
+    end
+end)
+
 -- Re-equip sau respawn
 Player.CharacterAdded:Connect(function(char)
     task.wait(1)
@@ -603,6 +655,245 @@ Player.Backpack.ChildAdded:Connect(function(child)
             if humanoid then
                 humanoid:EquipTool(child)
             end
+        end
+    end
+end)
+
+-- ═══════════════════════════════════════════════════════════════
+-- ║                    BOSSES SECTION                          ║
+-- ║  Timed Bosses: multi-select, sort by distance, auto farm   ║
+-- ═══════════════════════════════════════════════════════════════
+
+-- Boss config: CFrame spawn locations + Remote teleport names (from xeno.lua)
+local timedBossConfig = {
+    ["Gojo"]    = { cframe = CFrame.new(1858.32, 12.98, 338.14),    remote = "Shibuya" },
+    ["Yuji"]    = { cframe = CFrame.new(1537.92, 9.98, 226.10),     remote = "Shibuya" },
+    ["Sukuna"]  = { cframe = CFrame.new(1571.26, 77.22, -34.11),    remote = "Shibuya" },
+    ["Jinwoo"]  = { cframe = CFrame.new(248.74, 12.09, 927.54),     remote = "Sailor" },
+    ["Alucard"] = { cframe = CFrame.new(248.74, 12.09, 927.54),     remote = "Sailor" },
+    ["Aizen"]   = { cframe = CFrame.new(-567.22, -0.42, 1228.49),   remote = "HuecoMundo" },
+    ["Yamato"]  = { cframe = CFrame.new(-1422.68, 24.42, -1383.46), remote = "Judgement" },
+}
+
+local timedBossList = { "Gojo", "Yuji", "Sukuna", "Jinwoo", "Alucard", "Aizen", "Yamato" }
+
+-- State
+local selectedBosses = {}   -- { "Gojo" = true, "Sukuna" = true, ... }
+local bossFarmEnabled = false
+local bossFarmSpeed = 0.1
+
+-- UI Section
+Tab:Section("⏱️ Timed Bosses")
+
+Tab:Dropdown({
+    Name = "Select Bosses",
+    Items = timedBossList,
+    MultiSelect = true,
+    Callback = function(selectedList)
+        -- selectedList = table of selected boss names
+        selectedBosses = {}
+        for _, bossName in ipairs(selectedList) do
+            selectedBosses[bossName] = true
+        end
+        print("[Bosses] Selected: " .. table.concat(selectedList, ", "))
+    end
+})
+
+Tab:Toggle({
+    Name = "Auto Bosses Farming",
+    Default = false,
+    Callback = function(state)
+        bossFarmEnabled = state
+        -- Cleanup stabilize khi tắt
+        if not state then
+            local char = Player.Character
+            local root = char and char:FindFirstChild("HumanoidRootPart")
+            if root then
+                local bv = root:FindFirstChild("XenoStabBV")
+                local bg = root:FindFirstChild("XenoStabBG")
+                if bv then bv:Destroy() end
+                if bg then bg:Destroy() end
+            end
+        end
+        -- Tắt farm mob/xeno khi bật boss farm (tránh xung đột)
+        if state then
+            if autoFarmEnabled then
+                autoFarmEnabled = false
+                pcall(function() stopAboveLock() end)
+                print("[Bosses] Disabled Auto Farm to avoid conflict")
+            end
+            if xenoFarmEnabled then
+                xenoFarmEnabled = false
+                print("[Bosses] Disabled Xeno Farm to avoid conflict")
+            end
+        end
+        print("[Bosses] Auto Bosses Farming " .. (state and "ON" or "OFF"))
+    end
+})
+
+Tab:Slider({
+    Name = "Boss TP Speed (s)",
+    Min = 1,
+    Max = 50,
+    Default = 10,
+    Callback = function(value)
+        bossFarmSpeed = value / 100
+    end
+})
+
+-- Helper: Tìm boss còn sống trong workspace.NPCs
+local function findBossByName(bossName)
+    local npcsFolder = workspace:FindFirstChild("NPCs")
+    if not npcsFolder then return nil end
+    for _, npc in pairs(npcsFolder:GetChildren()) do
+        if npc.Name == bossName or npc.Name:find(bossName) then
+            local hum = npc:FindFirstChildOfClass("Humanoid")
+            local root = npc:FindFirstChild("HumanoidRootPart")
+            if hum and root and hum.Health > 0 then
+                return npc
+            end
+        end
+    end
+    return nil
+end
+
+-- Helper: Lấy danh sách boss đã chọn, sort theo khoảng cách tới player
+local function getSortedSelectedBosses()
+    local char = Player.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not root then return {} end
+
+    local bossList = {}
+    for bossName, _ in pairs(selectedBosses) do
+        local config = timedBossConfig[bossName]
+        if config then
+            -- Tính khoảng cách tới spawn point của boss
+            local dist = (root.Position - config.cframe.Position).Magnitude
+            table.insert(bossList, { name = bossName, config = config, distance = dist })
+        end
+    end
+
+    -- Sort: gần nhất trước
+    table.sort(bossList, function(a, b)
+        return a.distance < b.distance
+    end)
+
+    return bossList
+end
+
+-- Helper: Tính vị trí farm boss (dùng farmMode + farmDistance hiện tại)
+local function bossGetGoal(bossRoot)
+    local dist = farmDistance
+    if farmMode == "Above" then
+        local pos = bossRoot.Position
+        return CFrame.new(pos + Vector3.new(0, dist, 0), pos)
+    else
+        return bossRoot.CFrame * CFrame.new(0, 2, dist)
+    end
+end
+
+-- ★ BOSS FARM LOOP: Sort → Tele đảo → Farm boss gần nhất → Tiếp tục
+task.spawn(function()
+    while task.wait(bossFarmSpeed) do
+        if not bossFarmEnabled then continue end
+
+        -- Lấy danh sách boss đã chọn, sort theo khoảng cách
+        local sortedBosses = getSortedSelectedBosses()
+        if #sortedBosses == 0 then continue end
+
+        local char = Player.Character
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        if not root then continue end
+
+        -- Duyệt từng boss theo thứ tự gần → xa
+        local farmedAny = false
+        for _, bossInfo in ipairs(sortedBosses) do
+            if not bossFarmEnabled then break end
+
+            local bossName = bossInfo.name
+            local config = bossInfo.config
+
+            -- Tìm boss còn sống trong workspace
+            local bossNPC = findBossByName(bossName)
+
+            if bossNPC then
+                local bossRoot = bossNPC:FindFirstChild("HumanoidRootPart")
+                local bossHum = bossNPC:FindFirstChildOfClass("Humanoid")
+                if bossRoot and bossHum and bossHum.Health > 0 then
+                    -- Teleport tới đảo nếu quá xa
+                    local distance = (root.Position - bossRoot.Position).Magnitude
+                    if distance > 150 and config.remote then
+                        local TpRemote = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("TeleportToPortal")
+                        if TpRemote then
+                            pcall(function() TpRemote:FireServer(config.remote) end)
+                            task.wait(0.3)
+                        end
+                    end
+
+                    -- Tính vị trí farm
+                    local goal = bossGetGoal(bossRoot)
+
+                    -- Stabilize (BodyVelocity + BodyGyro giữ vị trí)
+                    -- Reuse xenoStabilize nếu đã có, nếu chưa thì tự tạo
+                    local bv = root:FindFirstChild("XenoStabBV")
+                    if not bv then
+                        bv = Instance.new("BodyVelocity")
+                        bv.Name = "XenoStabBV"
+                        bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+                        bv.P = 100000
+                        bv.Parent = root
+                    end
+                    bv.Velocity = Vector3.new(0, 0, 0)
+
+                    local bg = root:FindFirstChild("XenoStabBG")
+                    if not bg then
+                        bg = Instance.new("BodyGyro")
+                        bg.Name = "XenoStabBG"
+                        bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+                        bg.D = 500
+                        bg.P = 100000
+                        bg.Parent = root
+                    end
+                    bg.CFrame = goal
+
+                    -- TP trực tiếp bằng CFrame
+                    root.CFrame = goal
+
+                    -- Auto equip weapon
+                    if autoEquipEnabled and selectedWeapon then
+                        local alreadyEquipped = char:FindFirstChild(selectedWeapon)
+                        if not alreadyEquipped then
+                            local tool = Player.Backpack:FindFirstChild(selectedWeapon)
+                            local humanoid = char:FindFirstChildOfClass("Humanoid")
+                            if tool and humanoid then
+                                humanoid:EquipTool(tool)
+                            end
+                        end
+                    end
+
+                    -- Spam attack
+                    spamAttack(bossRoot.Position)
+                    farmedAny = true
+                    break -- Farm con gần nhất, loop lại sẽ re-sort
+                end
+            end
+        end
+
+        -- Không có boss nào alive → teleport tới spawn của boss đầu tiên đợi respawn
+        if not farmedAny and #sortedBosses > 0 then
+            local firstBoss = sortedBosses[1]
+            local config = firstBoss.config
+            local distance = (root.Position - config.cframe.Position).Magnitude
+
+            if distance > 150 and config.remote then
+                local TpRemote = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("TeleportToPortal")
+                if TpRemote then
+                    pcall(function() TpRemote:FireServer(config.remote) end)
+                    task.wait(0.3)
+                end
+            end
+
+            root.CFrame = config.cframe + Vector3.new(0, 5, 0) -- Đứng trên spawn point chờ
         end
     end
 end)
@@ -796,3 +1087,182 @@ Player.CharacterAdded:Connect(function()
     task.wait(1)
     -- BodyMovers tự mất khi character mới spawn, không cần cleanup
 end)
+
+-- ═══════════════════════════════════════════════════════════════
+-- ║                    SETTINGS TAB                            ║
+-- ═══════════════════════════════════════════════════════════════
+local SettingsTab = Window:Tab({ Name = "Settings" })
+
+-- ═══════════════════════════════════════
+-- WHITE SCREEN (Xóa map giảm lag nặng)
+-- ═══════════════════════════════════════
+SettingsTab:Section("Performance")
+
+local whiteScreenEnabled = false
+local hiddenParts = {}
+
+SettingsTab:Toggle({
+    Name = "White Screen (Giảm Lag)",
+    Default = false,
+    Callback = function(state)
+        whiteScreenEnabled = state
+        if state then
+            -- Ẩn tất cả BasePart trong workspace (trừ NPCs + Character)
+            for _, obj in pairs(workspace:GetDescendants()) do
+                if obj:IsA("BasePart") and not obj:IsDescendantOf(workspace:FindFirstChild("NPCs") or workspace) then
+                    local char = Player.Character
+                    if char and obj:IsDescendantOf(char) then continue end
+                    if obj.Transparency < 1 then
+                        hiddenParts[obj] = obj.Transparency
+                        obj.Transparency = 1
+                    end
+                end
+            end
+            -- Ẩn Terrain
+            pcall(function()
+                workspace.Terrain:Clear()
+            end)
+            print("[Settings] White Screen ON - Map hidden")
+        else
+            -- Khôi phục
+            for part, originalTransparency in pairs(hiddenParts) do
+                if part and part.Parent then
+                    part.Transparency = originalTransparency
+                end
+            end
+            hiddenParts = {}
+            print("[Settings] White Screen OFF - Map restored")
+        end
+    end
+})
+
+-- ═══════════════════════════════════════
+-- FPS LOCK
+-- ═══════════════════════════════════════
+SettingsTab:Slider({
+    Name = "FPS Lock",
+    Min = 15,
+    Max = 240,
+    Default = 60,
+    Callback = function(value)
+        pcall(function()
+            setfpscap(value)
+        end)
+        print("[Settings] FPS locked to " .. value)
+    end
+})
+
+-- ═══════════════════════════════════════
+-- NOCLIP (Đi xuyên tường)
+-- ═══════════════════════════════════════
+SettingsTab:Section("Movement")
+
+local noclipEnabled = false
+local noclipConnection = nil
+
+SettingsTab:Toggle({
+    Name = "Noclip (Xuyên Tường)",
+    Default = false,
+    Callback = function(state)
+        noclipEnabled = state
+        if state then
+            noclipConnection = RunService.Stepped:Connect(function()
+                if not noclipEnabled then return end
+                local character = Player.Character
+                if not character then return end
+                for _, part in pairs(character:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        part.CanCollide = false
+                    end
+                end
+            end)
+            print("[Settings] Noclip ON")
+        else
+            if noclipConnection then
+                noclipConnection:Disconnect()
+                noclipConnection = nil
+            end
+            -- Khôi phục collision
+            local character = Player.Character
+            if character then
+                for _, part in pairs(character:GetDescendants()) do
+                    if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                        part.CanCollide = true
+                    end
+                end
+            end
+            print("[Settings] Noclip OFF")
+        end
+    end
+})
+
+-- ═══════════════════════════════════════
+-- ANTI-DUPLICATE (Chống chạy script 2 lần)
+-- ═══════════════════════════════════════
+SettingsTab:Section("Safety")
+
+if _G.AutoFarmSailorPieceLoaded then
+    print("[Warning] Script đã chạy rồi! Không load lại.")
+    -- Không cần return vì script đã load hết
+else
+    _G.AutoFarmSailorPieceLoaded = true
+end
+
+-- ═══════════════════════════════════════
+-- AUTO REJOIN (Tự vào lại khi bị kick)
+-- ═══════════════════════════════════════
+local autoRejoinEnabled = false
+
+SettingsTab:Toggle({
+    Name = "Auto Rejoin (Tự Vào Lại)",
+    Default = false,
+    Callback = function(state)
+        autoRejoinEnabled = state
+        print("[Settings] Auto Rejoin " .. (state and "ON" or "OFF"))
+    end
+})
+
+-- Bắt sự kiện bị kick/disconnect
+pcall(function()
+    local CoreGui = game:GetService("CoreGui")
+    local ErrorPrompt = CoreGui:WaitForChild("RobloxPromptGui", 5)
+    if ErrorPrompt then
+        ErrorPrompt.DescendantAdded:Connect(function()
+            if autoRejoinEnabled then
+                task.wait(3)
+                pcall(function()
+                    game:GetService("TeleportService"):Teleport(game.PlaceId, Player)
+                end)
+            end
+        end)
+    end
+end)
+
+-- ═══════════════════════════════════════
+-- SESSION INFO
+-- ═══════════════════════════════════════
+SettingsTab:Section("Info")
+
+SettingsTab:Button({
+    Name = "📋 Copy Game Link",
+    Callback = function()
+        pcall(function()
+            local link = "https://www.roblox.com/games/" .. tostring(game.PlaceId)
+            setclipboard(link)
+            print("[Info] Link copied: " .. link)
+        end)
+    end
+})
+
+local startTime = os.time()
+SettingsTab:Button({
+    Name = "⏱ Session Uptime",
+    Callback = function()
+        local elapsed = os.time() - startTime
+        local mins = math.floor(elapsed / 60)
+        local secs = elapsed % 60
+        print("[Info] Session uptime: " .. mins .. "m " .. secs .. "s")
+    end
+})
+
+print("[Auto Farm Sailor Piece] Loaded successfully! ✅")
