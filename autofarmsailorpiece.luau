@@ -937,10 +937,10 @@ task.spawn(function()
                 task.wait(0.5)
             end
 
-            local waitPos = config.cframe + Vector3.new(0, 5, 0)
-            local dist = (root.Position - waitPos).Magnitude
+            local waitCF = config.cframe + Vector3.new(0, 5, 0)
+            local dist = (root.Position - waitCF.Position).Magnitude
             if dist > 3 then
-                tweenTo(CFrame.new(waitPos))
+                tweenTo(waitCF)
             end
         end
     end
@@ -1046,8 +1046,8 @@ task.spawn(function()
             end
 
             local waitCFrame = config.cframe + Vector3.new(0, 5, 0)
-            bossStabilize(root, CFrame.new(waitCFrame))
-            root.CFrame = CFrame.new(waitCFrame)
+            bossStabilize(root, waitCFrame)
+            root.CFrame = waitCFrame
         end
     end
 end)
