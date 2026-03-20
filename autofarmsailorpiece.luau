@@ -662,6 +662,7 @@ end)
 -- ═══════════════════════════════════════════════════════════════
 -- ║                    BOSSES SECTION                          ║
 -- ║  Timed Bosses: multi-select, sort by distance, auto farm   ║
+-- ║  2 modes: Tween (smooth) vs Xeno (CFrame + stabilize)     ║
 -- ═══════════════════════════════════════════════════════════════
 
 -- Boss config: CFrame spawn locations + Remote teleport names (from xeno.lua)
@@ -678,9 +679,11 @@ local timedBossConfig = {
 local timedBossList = { "Gojo", "Yuji", "Sukuna", "Jinwoo", "Alucard", "Aizen", "Yamato" }
 
 -- State
-local selectedBosses = {}   -- { "Gojo" = true, "Sukuna" = true, ... }
-local bossFarmEnabled = false
-local bossFarmSpeed = 0.1
+local selectedBosses = {}            -- { "Gojo" = true, "Sukuna" = true, ... }
+local bossFarmTweenEnabled = false   -- Toggle 1: Tween approach
+local bossFarmXenoEnabled = false    -- Toggle 2: Xeno CFrame approach
+local bossTweenSpeed = 0.1
+local bossXenoSpeed = 0.1
 
 -- UI Section
 Tab:Section("⏱️ Timed Bosses")
@@ -690,33 +693,45 @@ Tab:Dropdown({
     Items = timedBossList,
     MultiSelect = true,
     Callback = function(selectedList)
-        -- selectedList = table of selected boss names
-        selectedBosses = {}
-        for _, bossName in ipairs(selectedList) do
-            selectedBosses[bossName] = true
+        -- ★ FIX: NovaLib MultiSelect fires callback per item as STRING (not table)
+        -- Mỗi lần user click 1 boss → callback nhận string tên boss đó
+        -- Ta toggle on/off trong selectedBosses
+        if type(selectedList) == "string" then
+            -- Toggle: nếu đã chọn thì bỏ, chưa chọn thì thêm
+            if selectedBosses[selectedList] then
+                selectedBosses[selectedList] = nil
+            else
+                selectedBosses[selectedList] = true
+            end
+        elseif type(selectedList) == "table" then
+            -- Fallback nếu lib trả table (phiên bản khác)
+            selectedBosses = {}
+            for _, bossName in ipairs(selectedList) do
+                selectedBosses[bossName] = true
+            end
         end
-        print("[Bosses] Selected: " .. table.concat(selectedList, ", "))
+        -- Print danh sách đang chọn
+        local names = {}
+        for name, _ in pairs(selectedBosses) do table.insert(names, name) end
+        print("[Bosses] Selected: " .. (#names > 0 and table.concat(names, ", ") or "none"))
     end
 })
 
+-- ───────────────────────────────────────
+-- TOGGLE 1: Auto Bosses Farming (Tween)
+-- Teleport đảo → Tween mượt tới boss → Attack
+-- ───────────────────────────────────────
 Tab:Toggle({
     Name = "Auto Bosses Farming",
     Default = false,
     Callback = function(state)
-        bossFarmEnabled = state
-        -- Cleanup stabilize khi tắt
-        if not state then
-            local char = Player.Character
-            local root = char and char:FindFirstChild("HumanoidRootPart")
-            if root then
-                local bv = root:FindFirstChild("XenoStabBV")
-                local bg = root:FindFirstChild("XenoStabBG")
-                if bv then bv:Destroy() end
-                if bg then bg:Destroy() end
-            end
-        end
-        -- Tắt farm mob/xeno khi bật boss farm (tránh xung đột)
+        bossFarmTweenEnabled = state
         if state then
+            -- Tắt các farm khác tránh xung đột
+            if bossFarmXenoEnabled then
+                bossFarmXenoEnabled = false
+                print("[Bosses] Disabled Xeno Boss Farm to avoid conflict")
+            end
             if autoFarmEnabled then
                 autoFarmEnabled = false
                 pcall(function() stopAboveLock() end)
@@ -724,22 +739,76 @@ Tab:Toggle({
             end
             if xenoFarmEnabled then
                 xenoFarmEnabled = false
-                print("[Bosses] Disabled Xeno Farm to avoid conflict")
+                print("[Bosses] Disabled Xeno Mob Farm to avoid conflict")
             end
         end
-        print("[Bosses] Auto Bosses Farming " .. (state and "ON" or "OFF"))
+        print("[Bosses] Auto Bosses Farming (Tween) " .. (state and "ON" or "OFF"))
     end
 })
 
 Tab:Slider({
-    Name = "Boss TP Speed (s)",
+    Name = "Boss Tween Speed (s)",
     Min = 1,
     Max = 50,
     Default = 10,
     Callback = function(value)
-        bossFarmSpeed = value / 100
+        bossTweenSpeed = value / 100
     end
 })
+
+-- ───────────────────────────────────────
+-- TOGGLE 2: Xeno Auto Bosses Farming (CFrame + Stabilize)
+-- TeleportToPortal remote → CFrame trực tiếp + BodyVelocity/BodyGyro
+-- ───────────────────────────────────────
+Tab:Toggle({
+    Name = "Xeno Auto Bosses Farming",
+    Default = false,
+    Callback = function(state)
+        bossFarmXenoEnabled = state
+        -- Cleanup stabilize khi tắt
+        if not state then
+            local char = Player.Character
+            local root = char and char:FindFirstChild("HumanoidRootPart")
+            if root then
+                local bv = root:FindFirstChild("BossStabBV")
+                local bg = root:FindFirstChild("BossStabBG")
+                if bv then bv:Destroy() end
+                if bg then bg:Destroy() end
+            end
+        end
+        if state then
+            -- Tắt các farm khác tránh xung đột
+            if bossFarmTweenEnabled then
+                bossFarmTweenEnabled = false
+                print("[Bosses] Disabled Tween Boss Farm to avoid conflict")
+            end
+            if autoFarmEnabled then
+                autoFarmEnabled = false
+                pcall(function() stopAboveLock() end)
+                print("[Bosses] Disabled Auto Farm to avoid conflict")
+            end
+            if xenoFarmEnabled then
+                xenoFarmEnabled = false
+                print("[Bosses] Disabled Xeno Mob Farm to avoid conflict")
+            end
+        end
+        print("[Bosses] Xeno Auto Bosses Farming " .. (state and "ON" or "OFF"))
+    end
+})
+
+Tab:Slider({
+    Name = "Boss Xeno Speed (s)",
+    Min = 1,
+    Max = 50,
+    Default = 10,
+    Callback = function(value)
+        bossXenoSpeed = value / 100
+    end
+})
+
+-- ═══════════════════════════════════════
+-- BOSS HELPERS (shared by both modes)
+-- ═══════════════════════════════════════
 
 -- Helper: Tìm boss còn sống trong workspace.NPCs
 local function findBossByName(bossName)
@@ -767,7 +836,6 @@ local function getSortedSelectedBosses()
     for bossName, _ in pairs(selectedBosses) do
         local config = timedBossConfig[bossName]
         if config then
-            -- Tính khoảng cách tới spawn point của boss
             local dist = (root.Position - config.cframe.Position).Magnitude
             table.insert(bossList, { name = bossName, config = config, distance = dist })
         end
@@ -792,12 +860,29 @@ local function bossGetGoal(bossRoot)
     end
 end
 
--- ★ BOSS FARM LOOP: Sort → Tele đảo → Farm boss gần nhất → Tiếp tục
-task.spawn(function()
-    while task.wait(bossFarmSpeed) do
-        if not bossFarmEnabled then continue end
+-- Helper: Auto equip weapon (dùng chung cho cả 2 mode)
+local function bossAutoEquip(char)
+    if autoEquipEnabled and selectedWeapon then
+        local alreadyEquipped = char:FindFirstChild(selectedWeapon)
+        if not alreadyEquipped then
+            local tool = Player.Backpack:FindFirstChild(selectedWeapon)
+            local humanoid = char:FindFirstChildOfClass("Humanoid")
+            if tool and humanoid then
+                humanoid:EquipTool(tool)
+            end
+        end
+    end
+end
 
-        -- Lấy danh sách boss đã chọn, sort theo khoảng cách
+-- ═══════════════════════════════════════
+-- ★ LOOP A: TWEEN BOSS FARM
+-- Teleport đảo → Tween mượt tới boss → Attack
+-- (Giống cách farm mob Behind mode)
+-- ═══════════════════════════════════════
+task.spawn(function()
+    while task.wait(bossTweenSpeed) do
+        if not bossFarmTweenEnabled then continue end
+
         local sortedBosses = getSortedSelectedBosses()
         if #sortedBosses == 0 then continue end
 
@@ -805,95 +890,164 @@ task.spawn(function()
         local root = char and char:FindFirstChild("HumanoidRootPart")
         if not root then continue end
 
-        -- Duyệt từng boss theo thứ tự gần → xa
         local farmedAny = false
         for _, bossInfo in ipairs(sortedBosses) do
-            if not bossFarmEnabled then break end
+            if not bossFarmTweenEnabled then break end
 
             local bossName = bossInfo.name
             local config = bossInfo.config
 
-            -- Tìm boss còn sống trong workspace
             local bossNPC = findBossByName(bossName)
-
             if bossNPC then
                 local bossRoot = bossNPC:FindFirstChild("HumanoidRootPart")
                 local bossHum = bossNPC:FindFirstChildOfClass("Humanoid")
                 if bossRoot and bossHum and bossHum.Health > 0 then
-                    -- Teleport tới đảo nếu quá xa
+                    -- Teleport tới đảo nếu quá xa (dùng teleportToIsland)
                     local distance = (root.Position - bossRoot.Position).Magnitude
                     if distance > 150 and config.remote then
-                        local TpRemote = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("TeleportToPortal")
-                        if TpRemote then
-                            pcall(function() TpRemote:FireServer(config.remote) end)
-                            task.wait(0.3)
-                        end
+                        teleportToIsland(config.remote)
+                        task.wait(0.5)
                     end
 
-                    -- Tính vị trí farm
+                    -- Tween mượt tới vị trí farm boss
                     local goal = bossGetGoal(bossRoot)
-
-                    -- Stabilize (BodyVelocity + BodyGyro giữ vị trí)
-                    -- Reuse xenoStabilize nếu đã có, nếu chưa thì tự tạo
-                    local bv = root:FindFirstChild("XenoStabBV")
-                    if not bv then
-                        bv = Instance.new("BodyVelocity")
-                        bv.Name = "XenoStabBV"
-                        bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-                        bv.P = 100000
-                        bv.Parent = root
-                    end
-                    bv.Velocity = Vector3.new(0, 0, 0)
-
-                    local bg = root:FindFirstChild("XenoStabBG")
-                    if not bg then
-                        bg = Instance.new("BodyGyro")
-                        bg.Name = "XenoStabBG"
-                        bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
-                        bg.D = 500
-                        bg.P = 100000
-                        bg.Parent = root
-                    end
-                    bg.CFrame = goal
-
-                    -- TP trực tiếp bằng CFrame
-                    root.CFrame = goal
-
-                    -- Auto equip weapon
-                    if autoEquipEnabled and selectedWeapon then
-                        local alreadyEquipped = char:FindFirstChild(selectedWeapon)
-                        if not alreadyEquipped then
-                            local tool = Player.Backpack:FindFirstChild(selectedWeapon)
-                            local humanoid = char:FindFirstChildOfClass("Humanoid")
-                            if tool and humanoid then
-                                humanoid:EquipTool(tool)
-                            end
-                        end
+                    local dist = (root.Position - goal.Position).Magnitude
+                    if dist > 3 then
+                        tweenTo(goal)
                     end
 
-                    -- Spam attack
+                    -- Auto equip + attack
+                    bossAutoEquip(char)
                     spamAttack(bossRoot.Position)
+
                     farmedAny = true
-                    break -- Farm con gần nhất, loop lại sẽ re-sort
+                    break -- Farm boss gần nhất, loop lại re-sort
                 end
             end
         end
 
-        -- Không có boss nào alive → teleport tới spawn của boss đầu tiên đợi respawn
+        -- Không có boss nào alive → tween tới spawn đầu tiên đợi respawn
         if not farmedAny and #sortedBosses > 0 then
             local firstBoss = sortedBosses[1]
             local config = firstBoss.config
             local distance = (root.Position - config.cframe.Position).Magnitude
 
             if distance > 150 and config.remote then
-                local TpRemote = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("TeleportToPortal")
-                if TpRemote then
-                    pcall(function() TpRemote:FireServer(config.remote) end)
+                teleportToIsland(config.remote)
+                task.wait(0.5)
+            end
+
+            local waitPos = config.cframe + Vector3.new(0, 5, 0)
+            local dist = (root.Position - waitPos).Magnitude
+            if dist > 3 then
+                tweenTo(CFrame.new(waitPos))
+            end
+        end
+    end
+end)
+
+-- ═══════════════════════════════════════
+-- ★ LOOP B: XENO BOSS FARM
+-- TeleportToPortal remote → CFrame trực tiếp + BodyVelocity/BodyGyro
+-- (Giống cách Xeno farm mob)
+-- ═══════════════════════════════════════
+
+-- Boss-specific stabilize (tên riêng để không xung đột với mob xeno)
+local function bossStabilize(root, goalCFrame)
+    local bv = root:FindFirstChild("BossStabBV")
+    if not bv then
+        bv = Instance.new("BodyVelocity")
+        bv.Name = "BossStabBV"
+        bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+        bv.P = 100000
+        bv.Parent = root
+    end
+    bv.Velocity = Vector3.new(0, 0, 0)
+
+    local bg = root:FindFirstChild("BossStabBG")
+    if not bg then
+        bg = Instance.new("BodyGyro")
+        bg.Name = "BossStabBG"
+        bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+        bg.D = 500
+        bg.P = 100000
+        bg.Parent = root
+    end
+    bg.CFrame = goalCFrame
+end
+
+local function bossDestabilize(root)
+    local bv = root:FindFirstChild("BossStabBV")
+    local bg = root:FindFirstChild("BossStabBG")
+    if bv then bv:Destroy() end
+    if bg then bg:Destroy() end
+end
+
+task.spawn(function()
+    while task.wait(bossXenoSpeed) do
+        if not bossFarmXenoEnabled then continue end
+
+        local sortedBosses = getSortedSelectedBosses()
+        if #sortedBosses == 0 then continue end
+
+        local char = Player.Character
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        if not root then continue end
+
+        local farmedAny = false
+        for _, bossInfo in ipairs(sortedBosses) do
+            if not bossFarmXenoEnabled then break end
+
+            local bossName = bossInfo.name
+            local config = bossInfo.config
+
+            local bossNPC = findBossByName(bossName)
+            if bossNPC then
+                local bossRoot = bossNPC:FindFirstChild("HumanoidRootPart")
+                local bossHum = bossNPC:FindFirstChildOfClass("Humanoid")
+                if bossRoot and bossHum and bossHum.Health > 0 then
+                    -- ★ BYPASS: TeleportToPortal trước nếu quá xa
+                    local distance = (root.Position - bossRoot.Position).Magnitude
+                    if distance > 150 and config.remote then
+                        local TpRemoteBoss = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("TeleportToPortal")
+                        if TpRemoteBoss then
+                            pcall(function() TpRemoteBoss:FireServer(config.remote) end)
+                            task.wait(0.3)
+                        end
+                    end
+
+                    -- Tính vị trí farm + stabilize + CFrame trực tiếp
+                    local goal = bossGetGoal(bossRoot)
+                    bossStabilize(root, goal)
+                    root.CFrame = goal
+
+                    -- Auto equip + attack
+                    bossAutoEquip(char)
+                    spamAttack(bossRoot.Position)
+
+                    farmedAny = true
+                    break -- Farm boss gần nhất, loop lại re-sort
+                end
+            end
+        end
+
+        -- Không có boss nào alive → CFrame tới spawn đầu tiên đợi respawn
+        if not farmedAny and #sortedBosses > 0 then
+            local firstBoss = sortedBosses[1]
+            local config = firstBoss.config
+            local distance = (root.Position - config.cframe.Position).Magnitude
+
+            if distance > 150 and config.remote then
+                local TpRemoteBoss = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("TeleportToPortal")
+                if TpRemoteBoss then
+                    pcall(function() TpRemoteBoss:FireServer(config.remote) end)
                     task.wait(0.3)
                 end
             end
 
-            root.CFrame = config.cframe + Vector3.new(0, 5, 0) -- Đứng trên spawn point chờ
+            local waitCFrame = config.cframe + Vector3.new(0, 5, 0)
+            bossStabilize(root, CFrame.new(waitCFrame))
+            root.CFrame = CFrame.new(waitCFrame)
         end
     end
 end)
