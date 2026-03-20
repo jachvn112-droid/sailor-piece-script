@@ -24,6 +24,9 @@ local tweenSpeed = 100
 local farmDistance = 5
 local farmMode = "Behind" -- Behind / Above
 
+-- Forward declaration (defined later)
+local stopAboveLock
+
 -- ═══════════════════════════════════════
 -- MOB CONFIG: mỗi mob cần Island + QuestNPC + WorkspaceFolder
 -- island         = tên gửi qua remote TeleportToPortal
@@ -111,6 +114,10 @@ Tab:Toggle({
     Default = false,
     Callback = function(state)
         autoFarmEnabled = state
+        -- Tắt farm → ngay lập tức unfreeze character nếu đang above lock
+        if not state then
+            pcall(function() stopAboveLock() end)
+        end
     end
 })
 
@@ -123,8 +130,13 @@ Tab:Dropdown({
     Name = "Farm Position",
     Items = { "Behind", "Above" },
     Callback = function(selected)
+        local wasAbove = (farmMode == "Above")
         farmMode = selected
         print("Farm mode: " .. selected)
+        -- Đổi từ Above sang Behind → unfreeze ngay
+        if wasAbove and selected ~= "Above" then
+            pcall(function() stopAboveLock() end)
+        end
     end
 })
 
@@ -297,19 +309,8 @@ local function tweenTo(targetCFrame)
     currentTween:Play()
 end
 
--- Di chuyển hitbox (cho mode Above)
-local function moveHitbox(npc)
-    if farmMode == "Above" then
-        -- Dời HumanoidRootPart của player xuống dưới để hit mob bên dưới
-        local character = Player.Character
-        if character then
-            local root = character:FindFirstChild("HumanoidRootPart")
-            if root then
-                root.CFrame = root.CFrame * CFrame.new(0, -farmDistance, 0)
-            end
-        end
-    end
-end
+
+
 
 -- Teleport đến đảo
 local function teleportToIsland(islandName)
@@ -422,10 +423,113 @@ task.spawn(function()
     end
 end)
 
--- Loop 2: Tìm mob + tween/snap + spam attack (mỗi 0.1s)
+-- ═══════════════════════════════════════
+-- ABOVE MODE: Hard physics lock — cố định hoàn toàn, không wobble
+-- Dùng Anchored + PlatformStand + Stepped (pre-physics)
+-- ═══════════════════════════════════════
+local aboveLockConnection = nil
+local aboveTargetNPC = nil
+local aboveLockActive = false
+
+-- Freeze toàn bộ physics của character
+local function freezeCharacter()
+    local character = Player.Character
+    if not character then return end
+    local root = character:FindFirstChild("HumanoidRootPart")
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if root then
+        root.Anchored = true
+    end
+    if humanoid then
+        humanoid.PlatformStand = true
+    end
+end
+
+-- Restore physics bình thường
+local function unfreezeCharacter()
+    local character = Player.Character
+    if not character then return end
+    local root = character:FindFirstChild("HumanoidRootPart")
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if root then
+        root.Anchored = false
+    end
+    if humanoid then
+        humanoid.PlatformStand = false
+    end
+end
+
+local function startAboveLock()
+    if aboveLockActive then return end
+    aboveLockActive = true
+    freezeCharacter()
+
+    -- Stepped chạy TRƯỚC physics mỗi frame → CFrame set ở đây không bị physics ghi đè
+    aboveLockConnection = RunService.Stepped:Connect(function()
+        if not autoFarmEnabled or farmMode ~= "Above" then
+            return -- monitor loop sẽ cleanup
+        end
+
+        local character = Player.Character
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+        if not root then return end
+
+        -- Đảm bảo luôn anchored (phòng respawn reset)
+        if not root.Anchored then
+            root.Anchored = true
+        end
+
+        -- Tìm mob gần nhất
+        local npc = findClosestNPC()
+        if not npc then
+            aboveTargetNPC = nil
+            return
+        end
+        local npcRoot = npc:FindFirstChild("HumanoidRootPart")
+        if not npcRoot then
+            aboveTargetNPC = nil
+            return
+        end
+
+        aboveTargetNPC = npc
+
+        -- Set CFrame lên trên đầu mob — anchored nên 100% cố định
+        local abovePos = npcRoot.Position + Vector3.new(0, farmDistance, 0)
+        root.CFrame = CFrame.lookAt(abovePos, npcRoot.Position)
+    end)
+end
+
+stopAboveLock = function()
+    if not aboveLockActive then return end
+    aboveLockActive = false
+
+    if aboveLockConnection then
+        aboveLockConnection:Disconnect()
+        aboveLockConnection = nil
+    end
+    aboveTargetNPC = nil
+    unfreezeCharacter()
+end
+
+-- ═══════════════════════════════════════
+-- ATTACK + MOVEMENT LOOPS
+-- ═══════════════════════════════════════
+
+-- Above mode: attack loop (fire remote liên tục từ vị trí cố định)
 task.spawn(function()
     while task.wait(0.1) do
-        if autoFarmEnabled and selectedMob then
+        if autoFarmEnabled and selectedMob and farmMode == "Above" then
+            if aboveTargetNPC then
+                spamAttack()
+            end
+        end
+    end
+end)
+
+-- Behind mode: tween + attack loop
+task.spawn(function()
+    while task.wait(0.1) do
+        if autoFarmEnabled and selectedMob and farmMode ~= "Above" then
             local npc = findClosestNPC()
             if npc then
                 local npcRoot = npc:FindFirstChild("HumanoidRootPart")
@@ -434,26 +538,25 @@ task.spawn(function()
                     local root = character and character:FindFirstChild("HumanoidRootPart")
                     if root then
                         local farmPos = getFarmPosition(npcRoot)
-
-                        if farmMode == "Above" then
-                            -- SNAP trực tiếp: giữ cố định trên đầu mob, không tween
-                            root.CFrame = farmPos
-                            -- Snap hitbox xuống mob → fire hit → snap lại lên
-                            local savedCFrame = root.CFrame
-                            root.CFrame = CFrame.lookAt(npcRoot.Position + Vector3.new(0, 2, 0), npcRoot.Position)
-                            spamAttack()
-                            root.CFrame = savedCFrame
-                        else
-                            -- Behind: tween mượt đến vị trí
-                            local dist = (root.Position - farmPos.Position).Magnitude
-                            if dist > 3 then
-                                tweenTo(farmPos)
-                            end
-                            spamAttack()
+                        local dist = (root.Position - farmPos.Position).Magnitude
+                        if dist > 3 then
+                            tweenTo(farmPos)
                         end
+                        spamAttack()
                     end
                 end
             end
+        end
+    end
+end)
+
+-- Monitor: tự bật/tắt Above lock + cleanup khi đổi mode
+task.spawn(function()
+    while task.wait(0.3) do
+        if autoFarmEnabled and farmMode == "Above" then
+            startAboveLock()
+        else
+            stopAboveLock()
         end
     end
 end)
