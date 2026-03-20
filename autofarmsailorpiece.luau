@@ -726,6 +726,9 @@ Tab:Toggle({
     Default = false,
     Callback = function(state)
         bossFarmTweenEnabled = state
+        if not state then
+            lastBossTeleportedIsland = nil -- Reset để bật lại sẽ re-tele đúng đảo
+        end
         if state then
             -- Tắt các farm khác tránh xung đột
             if bossFarmXenoEnabled then
@@ -765,8 +768,9 @@ Tab:Toggle({
     Default = false,
     Callback = function(state)
         bossFarmXenoEnabled = state
-        -- Cleanup stabilize khi tắt
+        -- Cleanup stabilize khi tắt + reset island state
         if not state then
+            lastXenoBossTeleportedIsland = nil -- Reset để bật lại sẽ re-tele đúng đảo
             local char = Player.Character
             local root = char and char:FindFirstChild("HumanoidRootPart")
             if root then
@@ -965,7 +969,7 @@ end
 -- ★ KHÔNG tele từng đảo để check — dùng tracker biết boss alive từ xa
 -- ★ Flow: Tracker biết boss alive → Tele tới đảo đó 1 lần → Tween tới boss → Attack
 -- ═══════════════════════════════════════════════════════════════
-local lastBossTeleportedIsland = nil -- Track đảo đã tele rồi (tránh spam tele)
+local lastBossTeleportedIsland = nil -- Track đảo đã tele rồi (tránh spam tele) — RESET khi tắt
 
 task.spawn(function()
     while task.wait(bossTweenSpeed) do
@@ -1017,11 +1021,9 @@ task.spawn(function()
                 local br = bossNPC:FindFirstChild("HumanoidRootPart")
                 if not bh or bh.Health <= 0 or not br then break end
 
-                -- Re-tween giữ vị trí sát boss
+                -- ★ LUÔN re-tween theo boss mỗi tick (boss di chuyển → mình đi theo)
                 local g = bossGetGoal(br)
-                if (root.Position - g.Position).Magnitude > 5 then
-                    tweenTo(g)
-                end
+                tweenTo(g) -- cancel tween cũ + tạo tween mới tới vị trí hiện tại của boss
 
                 -- Spam hit
                 spamAttack(br.Position)
@@ -1090,8 +1092,9 @@ local function bossDestabilize(root)
     if bg then bg:Destroy() end
 end
 
+local lastXenoBossTeleportedIsland = nil
+
 task.spawn(function()
-    local lastXenoBossTeleportedIsland = nil
 
     while task.wait(bossXenoSpeed) do
         if not bossFarmXenoEnabled then continue end
