@@ -25,14 +25,16 @@ local farmDistance = 5
 local farmMode = "Behind" -- Behind / Above
 
 -- ═══════════════════════════════════════
--- MOB CONFIG: mỗi mob cần Island + QuestNPC
--- Flow: Teleport Island → Accept Quest → Farm Mob
+-- MOB CONFIG: mỗi mob cần Island + QuestNPC + WorkspaceFolder
+-- island         = tên gửi qua remote TeleportToPortal
+-- quest          = tên QuestNPC gửi qua remote QuestAccept
+-- workspaceFolder = tên folder trong workspace chứa parts của đảo đó
 -- ═══════════════════════════════════════
 local mobConfig = {
-    ["Thief"]          = { island = "Starter",  quest = "QuestNPC1" },
-    ["ThiefBoss"]      = { island = "Starter",  quest = "QuestNPC2" },
-    -- Thêm mob mới theo format:
-    -- ["MobName"] = { island = "IslandName", quest = "QuestNPCx" },
+    ["Thief"]          = { island = "Starter",  quest = "QuestNPC1", workspaceFolder = "StarterIsland" },
+    ["ThiefBoss"]      = { island = "Starter",  quest = "QuestNPC2", workspaceFolder = "StarterIsland" },
+    -- Thêm mob mới:
+    -- ["MobName"] = { island = "X", quest = "QuestNPCx", workspaceFolder = "XIsland" },
 }
 
 -- ═══════════════════════════════════════
@@ -318,14 +320,52 @@ local function isQuestActive()
         return false
     end)
     return ok and result
+end
 
+-- ═══════════════════════════════════════
+-- ISLAND DETECTION: Raycast xuống check đang đứng trên đảo nào
+-- ═══════════════════════════════════════
+local function isOnIsland(workspaceFolderName)
+    local character = Player.Character
+    if not character then return false end
+    local root = character:FindFirstChild("HumanoidRootPart")
+    if not root then return false end
+
+    local islandFolder = workspace:FindFirstChild(workspaceFolderName)
+    if not islandFolder then return false end
+
+    -- Raycast thẳng xuống từ chân player
+    local rayOrigin = root.Position
+    local rayDirection = Vector3.new(0, -100, 0)
+    local rayParams = RaycastParams.new()
+    rayParams.FilterType = Enum.RaycastFilterType.Whitelist
+    rayParams.FilterDescendantsInstances = {islandFolder}
+
+    local result = workspace:Raycast(rayOrigin, rayDirection, rayParams)
+    if result and result.Instance then
+        return true -- Đang đứng trên part thuộc đảo này
+    end
+
+    -- Fallback: check tất cả parts trong island folder
+    -- (phòng trường hợp raycast miss do terrain phức tạp)
+    for _, part in pairs(islandFolder:GetDescendants()) do
+        if part:IsA("BasePart") then
+            local dist = (root.Position - part.Position).Magnitude
+            if dist < 150 then
+                return true
+            end
+        end
+    end
+
+    return false
 end
 
 -- ═══════════════════════════════════════
 -- MAIN LOOPS
--- Flow: Teleport Island → Accept Quest → Farm Mob
--- Game tự ignore nếu đã ở đảo đó rồi
+-- Flow: Teleport 1 lần → Quest → Farm Mob
+-- Retry nếu lag teleport thất bại
 -- ═══════════════════════════════════════
+local lastTeleportedIsland = nil -- Track đảo đã tele rồi
 
 -- Loop 1: Teleport + Quest (mỗi 2s)
 task.spawn(function()
@@ -333,11 +373,25 @@ task.spawn(function()
         if autoFarmEnabled and selectedMob then
             local config = mobConfig[selectedMob]
             if config then
-                -- Step 1: Luôn fire teleport (game tự skip nếu đang ở đảo đó)
-                teleportToIsland(config.island)
+                -- Step 1: Check đang ở đảo đúng chưa
+                if not isOnIsland(config.workspaceFolder) then
+                    -- Chưa ở đảo đúng → teleport + retry tối đa 5 lần
+                    for attempt = 1, 5 do
+                        print("[Farm] Teleport to " .. config.island .. " (attempt " .. attempt .. "/5)")
+                        teleportToIsland(config.island)
+                        task.wait(3) -- Đợi teleport load
 
-                -- Step 2: Chưa có quest → accept quest
-                if not isQuestActive() then
+                        if isOnIsland(config.workspaceFolder) then
+                            print("[Farm] Arrived at " .. config.island .. "!")
+                            lastTeleportedIsland = config.workspaceFolder
+                            break
+                        end
+                        print("[Farm] Lag? Retrying...")
+                    end
+                end
+
+                -- Step 2: Đã ở đảo đúng → check quest
+                if isOnIsland(config.workspaceFolder) and not isQuestActive() then
                     acceptQuest(config.quest)
                 end
             end
