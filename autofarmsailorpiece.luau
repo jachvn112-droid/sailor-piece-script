@@ -16,7 +16,7 @@ local Tab = Window:Tab({ Name = "Auto Farm" })
 -- ═══════════════════════════════════════
 -- STATE
 -- ═══════════════════════════════════════
-local selectedMob = nil
+local selectedMobs = {}  -- { "Thief" = true, "Monkey" = true, ... }
 local autoFarmEnabled = false
 local autoEquipEnabled = false
 local selectedWeapon = nil
@@ -106,9 +106,26 @@ local mobDisplayList = {
 Tab:Dropdown({
     Name = "Select Mob",
     Items = mobDisplayList,
+    MultiSelect = true,
     Callback = function(selected)
-        selectedMob = mobDisplayToInternal[selected] or selected
-        print("Selected mob: " .. selectedMob .. " (" .. selected .. ")")
+        -- NovaLib MultiSelect fires callback per item as STRING
+        if type(selected) == "string" then
+            local internal = mobDisplayToInternal[selected] or selected
+            if selectedMobs[internal] then
+                selectedMobs[internal] = nil
+            else
+                selectedMobs[internal] = true
+            end
+        elseif type(selected) == "table" then
+            selectedMobs = {}
+            for _, v in ipairs(selected) do
+                local internal = mobDisplayToInternal[v] or v
+                selectedMobs[internal] = true
+            end
+        end
+        local names = {}
+        for name, _ in pairs(selectedMobs) do table.insert(names, name) end
+        print("[Mob] Selected: " .. (#names > 0 and table.concat(names, ", ") or "none"))
     end
 })
 
@@ -273,14 +290,36 @@ Tab:Toggle({
 -- ═══════════════════════════════════════
 
 -- Check tên NPC có khớp mob đã chọn không (Thief1,Thief2... → Thief, nhưng ThiefBoss ≠ Thief)
-local function isMobMatch(npcName, targetMob)
+local function isMobMatchSingle(npcName, targetMob)
     if not npcName or not targetMob then return false end
-    -- Exact match
     if npcName == targetMob then return true end
-    -- Pattern: targetMob + số (VD: Thief1, Thief2...)
-    -- Nhưng KHÔNG match nếu có chữ khác phía sau (VD: ThiefBoss)
     local pattern = "^" .. targetMob .. "%d+$"
     return string.match(npcName, pattern) ~= nil
+end
+
+-- Check NPC có match BẤT KỲ mob nào đang chọn không
+local function isMobMatch(npcName)
+    if not npcName then return false end
+    for mobName, _ in pairs(selectedMobs) do
+        if isMobMatchSingle(npcName, mobName) then
+            return true
+        end
+    end
+    return false
+end
+
+-- Helper: lấy config của mob đầu tiên đang chọn (dùng cho teleport/quest)
+local function getFirstSelectedMobConfig()
+    for mobName, _ in pairs(selectedMobs) do
+        local config = mobConfig[mobName]
+        if config then return mobName, config end
+    end
+    return nil, nil
+end
+
+-- Helper: check có mob nào được chọn không
+local function hasSelectedMobs()
+    return next(selectedMobs) ~= nil
 end
 
 -- Tìm NPC gần nhất còn sống
@@ -298,7 +337,7 @@ local function findClosestNPC()
     local closestDist = math.huge
 
     for _, npc in pairs(npcsFolder:GetChildren()) do
-        if npc:IsA("Model") and isMobMatch(npc.Name, selectedMob) then
+        if npc:IsA("Model") and isMobMatch(npc.Name) then
             local npcHumanoid = npc:FindFirstChildOfClass("Humanoid")
             local npcRoot = npc:FindFirstChild("HumanoidRootPart")
             if npcHumanoid and npcRoot and npcHumanoid.Health > 0 then
@@ -437,8 +476,8 @@ local lastTeleportedIsland = nil -- Track đảo đã tele rồi
 -- Loop 1: Teleport + Quest (mỗi 2s)
 task.spawn(function()
     while task.wait(2) do
-        if autoFarmEnabled and selectedMob then
-            local config = mobConfig[selectedMob]
+        if autoFarmEnabled and hasSelectedMobs() then
+            local _, config = getFirstSelectedMobConfig()
             if config then
                 -- Step 1: Check đang ở đảo đúng chưa
                 if not isOnIsland(config.workspaceFolder) then
@@ -555,7 +594,7 @@ end
 -- Above mode: attack loop (fire remote lien tuc tu vi tri co dinh)
 task.spawn(function()
     while task.wait(0.1) do
-        if autoFarmEnabled and selectedMob and farmMode == "Above" then
+        if autoFarmEnabled and hasSelectedMobs() and farmMode == "Above" then
             if aboveTargetNPC then
                 local npcRoot = aboveTargetNPC:FindFirstChild("HumanoidRootPart")
                 if npcRoot then
@@ -569,7 +608,7 @@ end)
 -- Behind mode: tween + attack loop
 task.spawn(function()
     while task.wait(0.1) do
-        if autoFarmEnabled and selectedMob and farmMode ~= "Above" then
+        if autoFarmEnabled and hasSelectedMobs() and farmMode ~= "Above" then
             local npc = findClosestNPC()
             if npc then
                 local npcRoot = npc:FindFirstChild("HumanoidRootPart")
@@ -1150,8 +1189,8 @@ end
 -- XENO FARM: Loop teleport + quest (giống loop cũ nhưng riêng biệt)
 task.spawn(function()
     while task.wait(2) do
-        if xenoFarmEnabled and selectedMob then
-            local config = mobConfig[selectedMob]
+        if xenoFarmEnabled and hasSelectedMobs() then
+            local _, config = getFirstSelectedMobConfig()
             if config then
                 -- Check đang ở đảo đúng chưa
                 if not isOnIsland(config.workspaceFolder) then
@@ -1177,9 +1216,9 @@ end)
 -- XENO FARM: Main farm loop (CFrame trực tiếp + TeleportToPortal bypass)
 task.spawn(function()
     while task.wait(xenoFarmSpeed) do
-        if not xenoFarmEnabled or not selectedMob then continue end
+        if not xenoFarmEnabled or not hasSelectedMobs() then continue end
 
-        local config = mobConfig[selectedMob]
+        local _, config = getFirstSelectedMobConfig()
         if not config then continue end
 
         local char = Player.Character
