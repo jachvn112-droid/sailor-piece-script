@@ -264,9 +264,9 @@ end
 -- Tính vị trí farm dựa theo mode
 local function getFarmPosition(npcRoot)
     if farmMode == "Above" then
-        -- Ở trên đầu mob + lật 180° úp mặt xuống
-        local abovePos = npcRoot.CFrame * CFrame.new(0, farmDistance, 0)
-        return abovePos * CFrame.Angles(math.rad(180), 0, 0)
+        -- Ở trên đầu mob, mặt nhìn xuống mob
+        local abovePos = npcRoot.Position + Vector3.new(0, farmDistance, 0)
+        return CFrame.lookAt(abovePos, npcRoot.Position)
     else
         -- Phía sau mob
         return npcRoot.CFrame * CFrame.new(0, 0, farmDistance)
@@ -422,7 +422,7 @@ task.spawn(function()
     end
 end)
 
--- Loop 2: Tìm mob + tween + spam attack (mỗi 0.1s)
+-- Loop 2: Tìm mob + tween/snap + spam attack (mỗi 0.1s)
 task.spawn(function()
     while task.wait(0.1) do
         if autoFarmEnabled and selectedMob then
@@ -434,21 +434,21 @@ task.spawn(function()
                     local root = character and character:FindFirstChild("HumanoidRootPart")
                     if root then
                         local farmPos = getFarmPosition(npcRoot)
-                        local dist = (root.Position - farmPos.Position).Magnitude
-
-                        -- Tween đến vị trí farm nếu còn xa
-                        if dist > 3 then
-                            tweenTo(farmPos)
-                        end
 
                         if farmMode == "Above" then
-                            -- Snap xuống vị trí mob → fire hit → snap lại lên
+                            -- SNAP trực tiếp: giữ cố định trên đầu mob, không tween
+                            root.CFrame = farmPos
+                            -- Snap hitbox xuống mob → fire hit → snap lại lên
                             local savedCFrame = root.CFrame
-                            root.CFrame = npcRoot.CFrame * CFrame.new(0, 0, farmDistance)
+                            root.CFrame = CFrame.lookAt(npcRoot.Position + Vector3.new(0, 2, 0), npcRoot.Position)
                             spamAttack()
                             root.CFrame = savedCFrame
                         else
-                            -- Behind: đánh bình thường
+                            -- Behind: tween mượt đến vị trí
+                            local dist = (root.Position - farmPos.Position).Magnitude
+                            if dist > 3 then
+                                tweenTo(farmPos)
+                            end
                             spamAttack()
                         end
                     end
