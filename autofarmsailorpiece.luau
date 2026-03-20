@@ -321,53 +321,24 @@ local function isQuestActive()
 
 end
 
--- Check mob gần player (< 200 studs = cùng đảo)
-local function isMobNearby()
-    local character = Player.Character
-    if not character then return false end
-    local root = character:FindFirstChild("HumanoidRootPart")
-    if not root then return false end
-
-    local npcsFolder = workspace:FindFirstChild("NPCs")
-    if not npcsFolder then return false end
-
-    for _, npc in pairs(npcsFolder:GetChildren()) do
-        if npc:IsA("Model") and isMobMatch(npc.Name, selectedMob) then
-            local npcRoot = npc:FindFirstChild("HumanoidRootPart")
-            if npcRoot then
-                local dist = (root.Position - npcRoot.Position).Magnitude
-                if dist < 200 then
-                    return true
-                end
-            end
-        end
-    end
-    return false
-end
-
 -- ═══════════════════════════════════════
 -- MAIN LOOPS
 -- Flow: Teleport Island → Accept Quest → Farm Mob
+-- Game tự ignore nếu đã ở đảo đó rồi
 -- ═══════════════════════════════════════
 
--- Loop 1: Teleport + Quest (mỗi 1s)
+-- Loop 1: Teleport + Quest (mỗi 2s)
 task.spawn(function()
-    while task.wait(1) do
+    while task.wait(2) do
         if autoFarmEnabled and selectedMob then
             local config = mobConfig[selectedMob]
             if config then
-                -- Step 1: Mob quá xa (khác đảo) → teleport đến đảo đúng
-                if not isMobNearby() then
-                    print("[Farm] Mob too far! Teleporting to island: " .. config.island)
-                    teleportToIsland(config.island)
-                    task.wait(3) -- Đợi teleport xong
-                end
+                -- Step 1: Luôn fire teleport (game tự skip nếu đang ở đảo đó)
+                teleportToIsland(config.island)
 
                 -- Step 2: Chưa có quest → accept quest
                 if not isQuestActive() then
-                    print("[Farm] Accepting quest: " .. config.quest)
                     acceptQuest(config.quest)
-                    task.wait(1)
                 end
             end
         end
