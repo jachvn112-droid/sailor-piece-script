@@ -321,13 +321,25 @@ local function isQuestActive()
 
 end
 
--- Check có mob nào trên đảo hiện tại không
-local function hasMobOnCurrentIsland()
+-- Check mob gần player (< 200 studs = cùng đảo)
+local function isMobNearby()
+    local character = Player.Character
+    if not character then return false end
+    local root = character:FindFirstChild("HumanoidRootPart")
+    if not root then return false end
+
     local npcsFolder = workspace:FindFirstChild("NPCs")
     if not npcsFolder then return false end
+
     for _, npc in pairs(npcsFolder:GetChildren()) do
         if npc:IsA("Model") and isMobMatch(npc.Name, selectedMob) then
-            return true
+            local npcRoot = npc:FindFirstChild("HumanoidRootPart")
+            if npcRoot then
+                local dist = (root.Position - npcRoot.Position).Magnitude
+                if dist < 200 then
+                    return true
+                end
+            end
         end
     end
     return false
@@ -344,9 +356,9 @@ task.spawn(function()
         if autoFarmEnabled and selectedMob then
             local config = mobConfig[selectedMob]
             if config then
-                -- Step 1: Không có mob trên đảo → teleport đến đảo đúng
-                if not hasMobOnCurrentIsland() then
-                    print("[Farm] Teleporting to island: " .. config.island)
+                -- Step 1: Mob quá xa (khác đảo) → teleport đến đảo đúng
+                if not isMobNearby() then
+                    print("[Farm] Mob too far! Teleporting to island: " .. config.island)
                     teleportToIsland(config.island)
                     task.wait(3) -- Đợi teleport xong
                 end
