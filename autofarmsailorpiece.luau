@@ -1010,12 +1010,26 @@ task.spawn(function()
                 tweenTo(goal)
             end
 
-            -- Auto equip + attack
+            -- Auto equip + spam attack liên tục cho đến khi boss chết
             bossAutoEquip(char)
-            spamAttack(bossRoot.Position)
+            while bossFarmTweenEnabled do
+                local bh = bossNPC:FindFirstChildOfClass("Humanoid")
+                local br = bossNPC:FindFirstChild("HumanoidRootPart")
+                if not bh or bh.Health <= 0 or not br then break end
+
+                -- Re-tween giữ vị trí sát boss
+                local g = bossGetGoal(br)
+                if (root.Position - g.Position).Magnitude > 5 then
+                    tweenTo(g)
+                end
+
+                -- Spam hit
+                spamAttack(br.Position)
+                task.wait(0.15)
+            end
 
             farmedAny = true
-            break -- Farm boss này, loop lại re-sort
+            break -- Boss chết hoặc disabled → re-sort
         end
 
         -- Không có boss nào alive → đợi ở spawn boss đầu tiên
@@ -1120,12 +1134,25 @@ task.spawn(function()
             bossStabilize(root, goal)
             root.CFrame = goal
 
-            -- Auto equip + attack
+            -- Auto equip + spam attack liên tục cho đến khi boss chết
             bossAutoEquip(char)
-            spamAttack(bossRoot.Position)
+            while bossFarmXenoEnabled do
+                local bh = bossNPC:FindFirstChildOfClass("Humanoid")
+                local br = bossNPC:FindFirstChild("HumanoidRootPart")
+                if not bh or bh.Health <= 0 or not br then break end
+
+                -- Re-CFrame giữ vị trí sát boss (xeno style)
+                local g = bossGetGoal(br)
+                bossStabilize(root, g)
+                root.CFrame = g
+
+                -- Spam hit
+                spamAttack(br.Position)
+                task.wait(0.15)
+            end
 
             farmedAny = true
-            break -- Farm boss này, loop lại re-sort
+            break -- Boss chết hoặc disabled → re-sort
         end
 
         -- Không có boss nào alive → CFrame tới spawn đầu tiên đợi respawn
