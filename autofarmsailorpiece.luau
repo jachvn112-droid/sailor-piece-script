@@ -24,9 +24,15 @@ local tweenSpeed = 100
 local farmDistance = 5
 local farmMode = "Behind" -- Behind / Above
 
--- Bảng map mob → quest NPC
-local mobQuestMap = {
-    ["Thief"] = "QuestNPC1",
+-- ═══════════════════════════════════════
+-- MOB CONFIG: mỗi mob cần Island + QuestNPC
+-- Flow: Teleport Island → Accept Quest → Farm Mob
+-- ═══════════════════════════════════════
+local mobConfig = {
+    ["Thief"]          = { island = "Starter",  quest = "QuestNPC1" },
+    ["ThiefBoss"]      = { island = "Starter",  quest = "QuestNPC2" },
+    -- Thêm mob mới theo format:
+    -- ["MobName"] = { island = "IslandName", quest = "QuestNPCx" },
 }
 
 -- ═══════════════════════════════════════
@@ -280,6 +286,13 @@ local function moveHitbox(npc)
     end
 end
 
+-- Teleport đến đảo
+local function teleportToIsland(islandName)
+    pcall(function()
+        ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("TeleportToPortal"):FireServer(islandName)
+    end)
+end
+
 -- Accept quest
 local function acceptQuest(questNPC)
     pcall(function()
@@ -305,20 +318,45 @@ local function isQuestActive()
         return false
     end)
     return ok and result
+
+end
+
+-- Check có mob nào trên đảo hiện tại không
+local function hasMobOnCurrentIsland()
+    local npcsFolder = workspace:FindFirstChild("NPCs")
+    if not npcsFolder then return false end
+    for _, npc in pairs(npcsFolder:GetChildren()) do
+        if npc:IsA("Model") and isMobMatch(npc.Name, selectedMob) then
+            return true
+        end
+    end
+    return false
 end
 
 -- ═══════════════════════════════════════
 -- MAIN LOOPS
+-- Flow: Teleport Island → Accept Quest → Farm Mob
 -- ═══════════════════════════════════════
 
--- Loop 1: Quest auto-accept (mỗi 0.5s)
+-- Loop 1: Teleport + Quest (mỗi 1s)
 task.spawn(function()
-    while task.wait(0.5) do
+    while task.wait(1) do
         if autoFarmEnabled and selectedMob then
-            local questNPC = mobQuestMap[selectedMob]
-            if questNPC and not isQuestActive() then
-                acceptQuest(questNPC)
-                task.wait(1)
+            local config = mobConfig[selectedMob]
+            if config then
+                -- Step 1: Không có mob trên đảo → teleport đến đảo đúng
+                if not hasMobOnCurrentIsland() then
+                    print("[Farm] Teleporting to island: " .. config.island)
+                    teleportToIsland(config.island)
+                    task.wait(3) -- Đợi teleport xong
+                end
+
+                -- Step 2: Chưa có quest → accept quest
+                if not isQuestActive() then
+                    print("[Farm] Accepting quest: " .. config.quest)
+                    acceptQuest(config.quest)
+                    task.wait(1)
+                end
             end
         end
     end
