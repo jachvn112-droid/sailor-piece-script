@@ -177,6 +177,15 @@ local weaponDropdown = Tab:Dropdown({
     end
 })
 
+Tab:Button({
+    Name = "🔄 Refresh Weapons",
+    Callback = function()
+        local newWeapons = getWeaponList()
+        weaponDropdown:SetItems(newWeapons)
+        print("[Weapons] Refreshed! Found " .. #newWeapons .. " weapons")
+    end
+})
+
 Tab:Toggle({
     Name = "Auto Equip Weapon",
     Default = false,
