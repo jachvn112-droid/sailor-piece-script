@@ -431,17 +431,13 @@ local aboveLockConnection = nil
 local aboveTargetNPC = nil
 local aboveLockActive = false
 
--- Freeze toàn bộ physics của character
+-- Freeze physics (chỉ Anchored, KHÔNG dùng PlatformStand vì nó ragdoll → melee ko đánh được)
 local function freezeCharacter()
     local character = Player.Character
     if not character then return end
     local root = character:FindFirstChild("HumanoidRootPart")
-    local humanoid = character:FindFirstChildOfClass("Humanoid")
     if root then
         root.Anchored = true
-    end
-    if humanoid then
-        humanoid.PlatformStand = true
     end
 end
 
@@ -450,12 +446,8 @@ local function unfreezeCharacter()
     local character = Player.Character
     if not character then return end
     local root = character:FindFirstChild("HumanoidRootPart")
-    local humanoid = character:FindFirstChildOfClass("Humanoid")
     if root then
         root.Anchored = false
-    end
-    if humanoid then
-        humanoid.PlatformStand = false
     end
 end
 
