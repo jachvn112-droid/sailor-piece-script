@@ -837,8 +837,8 @@ local function registerBossNPC(npc)
     local bossName = isBossNPC(npc.Name)
     if not bossName then return end
 
-    local hum = npc:FindFirstChildOfClass("Humanoid")
-    local root = npc:FindFirstChild("HumanoidRootPart")
+    local hum = npc:WaitForChild("Humanoid", 3)
+    local root = npc:WaitForChild("HumanoidRootPart", 3)
     if not hum or not root then return end
 
     -- Chỉ track nếu alive
@@ -887,7 +887,7 @@ local function initBossTracker()
 
     -- Lắng nghe NPCs mới spawn (boss respawn)
     local addConn = npcsFolder.ChildAdded:Connect(function(npc)
-        task.wait(0.1) -- Đợi Humanoid/HumanoidRootPart load
+        task.wait(0.5) -- Đợi Humanoid/HumanoidRootPart load (0.5s cho chắc)
         registerBossNPC(npc)
     end)
     table.insert(BossTracker._connections, addConn)
@@ -919,7 +919,10 @@ local function getSortedSelectedBosses()
                 local hum = npc:FindFirstChildOfClass("Humanoid")
                 isAlive = hum and hum.Health > 0
             end
-            local dist = (root.Position - config.cframe.Position).Magnitude
+            -- ★ FIX: Dùng vị trí thực của NPC khi alive, config.cframe khi dead
+            local npcRoot = npc and npc:FindFirstChild("HumanoidRootPart")
+            local targetPos = (npcRoot and npcRoot.Position) or config.cframe.Position
+            local dist = (root.Position - targetPos).Magnitude
             table.insert(bossList, {
                 name = bossName,
                 config = config,
@@ -970,6 +973,7 @@ end
 -- ★ Flow: Tracker biết boss alive → Tele tới đảo đó 1 lần → Tween tới boss → Attack
 -- ═══════════════════════════════════════════════════════════════
 local lastBossTeleportedIsland = nil -- Track đảo đã tele rồi (tránh spam tele) — RESET khi tắt
+local bossWaitRotationIndex = 0 -- Rotation index để xoay vòng đảo khi tất cả boss chết
 
 task.spawn(function()
     while task.wait(bossTweenSpeed) do
@@ -1016,10 +1020,16 @@ task.spawn(function()
 
             -- Auto equip + spam attack liên tục cho đến khi boss chết
             bossAutoEquip(char)
+            local bossStartTime = os.clock()
             while bossFarmTweenEnabled do
                 local bh = bossNPC:FindFirstChildOfClass("Humanoid")
                 local br = bossNPC:FindFirstChild("HumanoidRootPart")
                 if not bh or bh.Health <= 0 or not br then break end
+                -- ★ FIX: Timeout 120s tránh treo vĩnh viễn trên boss bất tử
+                if os.clock() - bossStartTime > 120 then
+                    print("[Bosses] ⏱ Timeout 120s on " .. bossName .. ", trying next boss")
+                    break
+                end
 
                 -- ★ LUÔN re-tween theo boss mỗi tick (boss di chuyển → mình đi theo)
                 local g = bossGetGoal(br)
@@ -1034,12 +1044,13 @@ task.spawn(function()
             break -- Boss chết hoặc disabled → re-sort
         end
 
-        -- Không có boss nào alive → đợi ở spawn boss đầu tiên
+        -- ★ FIX: Không có boss nào alive → XOAY VÒNG giữa các boss spawn thay vì đứng 1 chỗ
         if not farmedAny and #sortedBosses > 0 then
-            local firstBoss = sortedBosses[1]
-            local config = firstBoss.config
+            bossWaitRotationIndex = (bossWaitRotationIndex % #sortedBosses) + 1
+            local waitBoss = sortedBosses[bossWaitRotationIndex]
+            local config = waitBoss.config
 
-            -- Đã chắc chắn không boss nào alive → tele tới đảo đầu tiên đợi respawn
+            -- Tele tới đảo của boss tiếp theo trong vòng xoay
             if config.remote and lastBossTeleportedIsland ~= config.remote then
                 teleportToIsland(config.remote)
                 lastBossTeleportedIsland = config.remote
@@ -1051,6 +1062,7 @@ task.spawn(function()
             if dist > 3 then
                 tweenTo(waitCF)
             end
+            print("[Bosses] 🔄 Waiting at " .. waitBoss.name .. " spawn (" .. bossWaitRotationIndex .. "/" .. #sortedBosses .. ")")
         end
     end
 end)
@@ -1139,10 +1151,16 @@ task.spawn(function()
 
             -- Auto equip + spam attack liên tục cho đến khi boss chết
             bossAutoEquip(char)
+            local bossStartTime = os.clock()
             while bossFarmXenoEnabled do
                 local bh = bossNPC:FindFirstChildOfClass("Humanoid")
                 local br = bossNPC:FindFirstChild("HumanoidRootPart")
                 if not bh or bh.Health <= 0 or not br then break end
+                -- ★ FIX: Timeout 120s tránh treo vĩnh viễn trên boss bất tử
+                if os.clock() - bossStartTime > 120 then
+                    print("[Bosses] ⏱ Timeout 120s on " .. bossName .. ", trying next boss")
+                    break
+                end
 
                 -- Re-CFrame giữ vị trí sát boss (xeno style)
                 local g = bossGetGoal(br)
@@ -1158,10 +1176,11 @@ task.spawn(function()
             break -- Boss chết hoặc disabled → re-sort
         end
 
-        -- Không có boss nào alive → CFrame tới spawn đầu tiên đợi respawn
+        -- ★ FIX: Không có boss nào alive → XOAY VÒNG giữa các boss spawn thay vì đứng 1 chỗ
         if not farmedAny and #sortedBosses > 0 then
-            local firstBoss = sortedBosses[1]
-            local config = firstBoss.config
+            bossWaitRotationIndex = (bossWaitRotationIndex % #sortedBosses) + 1
+            local waitBoss = sortedBosses[bossWaitRotationIndex]
+            local config = waitBoss.config
 
             if config.remote and lastXenoBossTeleportedIsland ~= config.remote then
                 local TpRemoteBoss = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("TeleportToPortal")
@@ -1175,6 +1194,7 @@ task.spawn(function()
             local waitCFrame = config.cframe + Vector3.new(0, 5, 0)
             bossStabilize(root, waitCFrame)
             root.CFrame = waitCFrame
+            print("[Bosses] 🔄 Xeno waiting at " .. waitBoss.name .. " spawn (" .. bossWaitRotationIndex .. "/" .. #sortedBosses .. ")")
         end
     end
 end)
