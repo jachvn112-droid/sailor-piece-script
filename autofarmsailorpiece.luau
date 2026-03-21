@@ -878,27 +878,37 @@ local function getBossIsland(bossName)
     return cfg and cfg.remote or nil
 end
 
--- Teleport to the island of the first selected boss
-local function teleportForBoss()
+-- Get the island name for the first selected boss (for checking)
+local function getFirstBossIsland()
     for bossName, _ in pairs(selectedBosses) do
         local island = getBossIsland(bossName)
-        if island then
-            teleportToIsland(island)
-            return island
-        end
+        if island then return island end
+    end
+    return nil
+end
+
+-- Teleport to the island of the first selected boss (fires remote once)
+local function teleportForBoss()
+    local island = getFirstBossIsland()
+    if island then
+        teleportToIsland(island)
+        return island
     end
     return nil
 end
 
 -- ───────────────────────────────────────
 -- LOOP: Auto Bosses Farming (Tween)
--- Teleport to boss island → Tween smoothly to boss → Attack
+-- Teleport to boss island 1 lần → Tween smoothly to boss → Attack
+-- Không spam teleport remote nữa!
 -- ───────────────────────────────────────
 task.spawn(function()
     while task.wait(0.15) do
         if bossFarmTweenEnabled and hasSelectedBosses() then
             local boss = findBestBoss()
             if boss then
+                -- Boss found alive → reset teleport flag (đã tới nơi)
+                lastBossTeleportedIsland = getFirstBossIsland()
                 local bossRoot = boss:FindFirstChild("HumanoidRootPart")
                 if bossRoot then
                     local character = Player.Character
@@ -907,11 +917,7 @@ task.spawn(function()
                         local targetCF = bossRoot.CFrame * CFrame.new(0, 0, farmDistance)
                         local dist = (root.Position - targetCF.Position).Magnitude
 
-                        -- If very far, teleport to boss island first
-                        if dist > 150 then
-                            teleportForBoss()
-                            task.wait(2)
-                        elseif dist > 3 then
+                        if dist > 3 then
                             -- Tween behind boss
                             local tw = TweenService:Create(root, TweenInfo.new(
                                 math.max(bossTweenSpeed, 0.05), Enum.EasingStyle.Linear
@@ -923,9 +929,17 @@ task.spawn(function()
                     end
                 end
             else
-                -- No boss alive → teleport to boss island and wait for spawn
-                teleportForBoss()
-                task.wait(3)
+                -- No boss alive → teleport ĐẢO 1 LẦN rồi đợi boss spawn
+                local targetIsland = getFirstBossIsland()
+                if targetIsland and lastBossTeleportedIsland ~= targetIsland then
+                    print("[BossTween] Teleport to " .. targetIsland .. " (1 lần)")
+                    teleportForBoss()
+                    lastBossTeleportedIsland = targetIsland
+                    task.wait(3)
+                else
+                    -- Đã teleport rồi, chỉ đợi boss respawn
+                    task.wait(2)
+                end
             end
         end
     end
@@ -933,26 +947,22 @@ end)
 
 -- ───────────────────────────────────────
 -- LOOP: Xeno Auto Bosses Farming (CFrame snap + stabilize)
--- TeleportToPortal → CFrame directly on boss + BodyVelocity/BodyGyro
+-- TeleportToPortal 1 lần → CFrame directly on boss + BodyVelocity/BodyGyro
+-- Không spam teleport remote nữa!
 -- ───────────────────────────────────────
 task.spawn(function()
     while task.wait(0.1) do
         if bossFarmXenoEnabled and hasSelectedBosses() then
             local boss = findBestBoss()
             if boss then
+                -- Boss found alive → set flag
+                lastXenoBossTeleportedIsland = getFirstBossIsland()
                 local bossRoot = boss:FindFirstChild("HumanoidRootPart")
                 if bossRoot then
                     local character = Player.Character
                     local root = character and character:FindFirstChild("HumanoidRootPart")
                     if root then
                         root.Anchored = false
-
-                        -- If very far, teleport to boss island first
-                        local dist = (root.Position - bossRoot.Position).Magnitude
-                        if dist > 150 then
-                            teleportForBoss()
-                            task.wait(2)
-                        end
 
                         -- CFrame snap behind boss
                         root.CFrame = bossRoot.CFrame * CFrame.new(0, 0, farmDistance)
@@ -980,7 +990,7 @@ task.spawn(function()
                     end
                 end
             else
-                -- No boss alive → cleanup stabilizers + teleport
+                -- No boss alive → cleanup stabilizers
                 local char = Player.Character
                 local r = char and char:FindFirstChild("HumanoidRootPart")
                 if r then
@@ -990,8 +1000,17 @@ task.spawn(function()
                     if bg then bg:Destroy() end
                 end
 
-                teleportForBoss()
-                task.wait(3)
+                -- Teleport ĐẢO 1 LẦN rồi đợi boss spawn
+                local targetIsland = getFirstBossIsland()
+                if targetIsland and lastXenoBossTeleportedIsland ~= targetIsland then
+                    print("[BossXeno] Teleport to " .. targetIsland .. " (1 lần)")
+                    teleportForBoss()
+                    lastXenoBossTeleportedIsland = targetIsland
+                    task.wait(3)
+                else
+                    -- Đã teleport rồi, chỉ đợi boss respawn
+                    task.wait(2)
+                end
             end
         end
     end
