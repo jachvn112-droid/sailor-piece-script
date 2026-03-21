@@ -1,6 +1,6 @@
 local NovaLib
 do
-    local url = "https://raw.githubusercontent.com/jachvn112-droid/sailor-piece-script/refs/heads/main/NovaLib.luau"
+    local url = "https://raw.githubusercontent.com/jachvn112-droid/sailor-piece-script/main/NovaLib.luau"
     local ok, result = pcall(function()
         return loadstring(game:HttpGet(url))()
     end)
