@@ -841,12 +841,23 @@ local function findBestBoss()
     local bestHP = math.huge
 
     for _, npc in pairs(npcsFolder:GetChildren()) do
-        if npc:IsA("Model") and selectedBosses[npc.Name] then
-            local h = npc:FindFirstChildOfClass("Humanoid")
-            local r = npc:FindFirstChild("HumanoidRootPart")
-            if h and r and h.Health > 0 and h.Health < bestHP then
-                bestHP = h.Health
-                bestBoss = npc
+        if npc:IsA("Model") then
+            -- Boss NPCs have names like "GojoBoss", "Gojo1", etc.
+            -- Use pattern matching: npc.Name starts with selected boss name
+            local matched = false
+            for bossName, _ in pairs(selectedBosses) do
+                if npc.Name:find("^" .. bossName) then
+                    matched = true
+                    break
+                end
+            end
+            if matched then
+                local h = npc:FindFirstChildOfClass("Humanoid")
+                local r = npc:FindFirstChild("HumanoidRootPart")
+                if h and r and h.Health > 0 and h.Health < bestHP then
+                    bestHP = h.Health
+                    bestBoss = npc
+                end
             end
         end
     end
@@ -867,16 +878,16 @@ local function getBossIsland(bossName)
     return cfg and cfg.remote or nil
 end
 
--- Teleport to the island of the first selected boss that isn't spawned yet
-local function teleportForBoss(lastIslandVar)
+-- Teleport to the island of the first selected boss
+local function teleportForBoss()
     for bossName, _ in pairs(selectedBosses) do
         local island = getBossIsland(bossName)
-        if island and island ~= lastIslandVar then
+        if island then
             teleportToIsland(island)
             return island
         end
     end
-    return lastIslandVar
+    return nil
 end
 
 -- ───────────────────────────────────────
@@ -893,11 +904,15 @@ task.spawn(function()
                     local character = Player.Character
                     local root = character and character:FindFirstChild("HumanoidRootPart")
                     if root then
-                        -- Tween behind boss
                         local targetCF = bossRoot.CFrame * CFrame.new(0, 0, farmDistance)
                         local dist = (root.Position - targetCF.Position).Magnitude
-                        if dist > 3 then
-                            -- Use bossTweenSpeed for tween timing
+
+                        -- If very far, teleport to boss island first
+                        if dist > 150 then
+                            teleportForBoss()
+                            task.wait(2)
+                        elseif dist > 3 then
+                            -- Tween behind boss
                             local tw = TweenService:Create(root, TweenInfo.new(
                                 math.max(bossTweenSpeed, 0.05), Enum.EasingStyle.Linear
                             ), { CFrame = targetCF })
@@ -908,11 +923,9 @@ task.spawn(function()
                     end
                 end
             else
-                -- No boss alive → teleport to boss island if not already there
-                if not lastBossTeleportedIsland then
-                    lastBossTeleportedIsland = teleportForBoss(lastBossTeleportedIsland)
-                    task.wait(3) -- wait for teleport
-                end
+                -- No boss alive → teleport to boss island and wait for spawn
+                teleportForBoss()
+                task.wait(3)
             end
         end
     end
@@ -933,6 +946,14 @@ task.spawn(function()
                     local root = character and character:FindFirstChild("HumanoidRootPart")
                     if root then
                         root.Anchored = false
+
+                        -- If very far, teleport to boss island first
+                        local dist = (root.Position - bossRoot.Position).Magnitude
+                        if dist > 150 then
+                            teleportForBoss()
+                            task.wait(2)
+                        end
+
                         -- CFrame snap behind boss
                         root.CFrame = bossRoot.CFrame * CFrame.new(0, 0, farmDistance)
 
@@ -969,10 +990,8 @@ task.spawn(function()
                     if bg then bg:Destroy() end
                 end
 
-                if not lastXenoBossTeleportedIsland then
-                    lastXenoBossTeleportedIsland = teleportForBoss(lastXenoBossTeleportedIsland)
-                    task.wait(3)
-                end
+                teleportForBoss()
+                task.wait(3)
             end
         end
     end
