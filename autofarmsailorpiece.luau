@@ -1,4 +1,22 @@
-﻿local NovaLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/jachvn112-droid/sailor-piece-script/refs/heads/main/NovaLib.luau"))()
+local NovaLib
+do
+    local url = "https://raw.githubusercontent.com/jachvn112-droid/sailor-piece-script/refs/heads/main/NovaLib.luau"
+    local ok, result = pcall(function()
+        return loadstring(game:HttpGet(url))()
+    end)
+    if not ok then
+        warn("[NovaLib] First load failed, retrying in 2s... Error: " .. tostring(result))
+        task.wait(2)
+        ok, result = pcall(function()
+            return loadstring(game:HttpGet(url))()
+        end)
+    end
+    if ok and result then
+        NovaLib = result
+    else
+        error("[NovaLib] Failed to load library after 2 attempts. Check your internet or executor.")
+    end
+end
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
