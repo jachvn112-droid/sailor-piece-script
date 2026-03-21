@@ -367,8 +367,15 @@ local function acceptQuest(questNPC)
     end)
 end
 
+-- Attack cooldown: tránh spam RequestHit quá nhanh (rate limit)
+local lastAttackTime = 0
+local attackCooldown = 0.5 -- Chỉ fire mỗi 0.5s (2x/sec thay vì 7-10x)
+
 -- Spam attack (PHẢI truyền target position, không thì server ignore)
 local function spamAttack(targetPosition)
+    local now = tick()
+    if now - lastAttackTime < attackCooldown then return end -- Cooldown chưa hết
+    lastAttackTime = now
     pcall(function()
         if targetPosition then
             ReplicatedStorage:WaitForChild("CombatSystem"):WaitForChild("Remotes"):WaitForChild("RequestHit"):FireServer(targetPosition)
