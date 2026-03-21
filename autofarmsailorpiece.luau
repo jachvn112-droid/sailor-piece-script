@@ -686,6 +686,9 @@ local bossFarmTweenEnabled = false   -- Toggle 1: Tween approach
 local bossFarmXenoEnabled = false    -- Toggle 2: Xeno CFrame approach
 local bossTweenSpeed = 0.1
 local bossXenoSpeed = 0.1
+local xenoFarmEnabled = false        -- (referenced by toggles for conflict check)
+local lastBossTeleportedIsland = nil
+local lastXenoBossTeleportedIsland = nil
 
 -- UI Section
 Tab:Section("⏱️ Timed Bosses")
@@ -812,7 +815,168 @@ Tab:Slider({
     end
 })
 
--- (Old boss/xeno code removed — new simplified version is above)
+-- ═══════════════════════════════════════════════════════════════
+-- ║          BOSS FARMING HELPERS + LOOPS                       ║
+-- ═══════════════════════════════════════════════════════════════
+
+-- Find alive boss NPC in workspace/NPCs whose name matches any selected boss
+-- Returns the one with lowest HP (target lock: keep current target while alive)
+local currentBossTarget = nil
+
+local function findBestBoss()
+    -- Target lock: keep attacking current target while it's alive
+    if currentBossTarget then
+        local h = currentBossTarget:FindFirstChildOfClass("Humanoid")
+        local r = currentBossTarget:FindFirstChild("HumanoidRootPart")
+        if h and r and h.Health > 0 then
+            return currentBossTarget
+        end
+        currentBossTarget = nil
+    end
+
+    local npcsFolder = workspace:FindFirstChild("NPCs")
+    if not npcsFolder then return nil end
+
+    local bestBoss = nil
+    local bestHP = math.huge
+
+    for _, npc in pairs(npcsFolder:GetChildren()) do
+        if npc:IsA("Model") and selectedBosses[npc.Name] then
+            local h = npc:FindFirstChildOfClass("Humanoid")
+            local r = npc:FindFirstChild("HumanoidRootPart")
+            if h and r and h.Health > 0 and h.Health < bestHP then
+                bestHP = h.Health
+                bestBoss = npc
+            end
+        end
+    end
+
+    currentBossTarget = bestBoss
+    return bestBoss
+end
+
+-- Check if we have ANY boss selected
+local function hasSelectedBosses()
+    for _ in pairs(selectedBosses) do return true end
+    return false
+end
+
+-- Get the remote/island name for a boss so we can teleport there
+local function getBossIsland(bossName)
+    local cfg = timedBossConfig[bossName]
+    return cfg and cfg.remote or nil
+end
+
+-- Teleport to the island of the first selected boss that isn't spawned yet
+local function teleportForBoss(lastIslandVar)
+    for bossName, _ in pairs(selectedBosses) do
+        local island = getBossIsland(bossName)
+        if island and island ~= lastIslandVar then
+            teleportToIsland(island)
+            return island
+        end
+    end
+    return lastIslandVar
+end
+
+-- ───────────────────────────────────────
+-- LOOP: Auto Bosses Farming (Tween)
+-- Teleport to boss island → Tween smoothly to boss → Attack
+-- ───────────────────────────────────────
+task.spawn(function()
+    while task.wait(0.15) do
+        if bossFarmTweenEnabled and hasSelectedBosses() then
+            local boss = findBestBoss()
+            if boss then
+                local bossRoot = boss:FindFirstChild("HumanoidRootPart")
+                if bossRoot then
+                    local character = Player.Character
+                    local root = character and character:FindFirstChild("HumanoidRootPart")
+                    if root then
+                        -- Tween behind boss
+                        local targetCF = bossRoot.CFrame * CFrame.new(0, 0, farmDistance)
+                        local dist = (root.Position - targetCF.Position).Magnitude
+                        if dist > 3 then
+                            -- Use bossTweenSpeed for tween timing
+                            local tw = TweenService:Create(root, TweenInfo.new(
+                                math.max(bossTweenSpeed, 0.05), Enum.EasingStyle.Linear
+                            ), { CFrame = targetCF })
+                            tw:Play()
+                        end
+                        -- Attack
+                        spamAttack(bossRoot.Position)
+                    end
+                end
+            else
+                -- No boss alive → teleport to boss island if not already there
+                if not lastBossTeleportedIsland then
+                    lastBossTeleportedIsland = teleportForBoss(lastBossTeleportedIsland)
+                    task.wait(3) -- wait for teleport
+                end
+            end
+        end
+    end
+end)
+
+-- ───────────────────────────────────────
+-- LOOP: Xeno Auto Bosses Farming (CFrame snap + stabilize)
+-- TeleportToPortal → CFrame directly on boss + BodyVelocity/BodyGyro
+-- ───────────────────────────────────────
+task.spawn(function()
+    while task.wait(0.1) do
+        if bossFarmXenoEnabled and hasSelectedBosses() then
+            local boss = findBestBoss()
+            if boss then
+                local bossRoot = boss:FindFirstChild("HumanoidRootPart")
+                if bossRoot then
+                    local character = Player.Character
+                    local root = character and character:FindFirstChild("HumanoidRootPart")
+                    if root then
+                        root.Anchored = false
+                        -- CFrame snap behind boss
+                        root.CFrame = bossRoot.CFrame * CFrame.new(0, 0, farmDistance)
+
+                        -- Stabilize with BodyVelocity + BodyGyro
+                        if not root:FindFirstChild("BossStabBV") then
+                            local bv = Instance.new("BodyVelocity")
+                            bv.Name = "BossStabBV"
+                            bv.Velocity = Vector3.new(0, 0, 0)
+                            bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+                            bv.P = 100000
+                            bv.Parent = root
+                        end
+                        if not root:FindFirstChild("BossStabBG") then
+                            local bg = Instance.new("BodyGyro")
+                            bg.Name = "BossStabBG"
+                            bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+                            bg.P = 100000
+                            bg.CFrame = root.CFrame
+                            bg.Parent = root
+                        end
+
+                        -- Attack
+                        spamAttack(bossRoot.Position)
+                    end
+                end
+            else
+                -- No boss alive → cleanup stabilizers + teleport
+                local char = Player.Character
+                local r = char and char:FindFirstChild("HumanoidRootPart")
+                if r then
+                    local bv = r:FindFirstChild("BossStabBV")
+                    local bg = r:FindFirstChild("BossStabBG")
+                    if bv then bv:Destroy() end
+                    if bg then bg:Destroy() end
+                end
+
+                if not lastXenoBossTeleportedIsland then
+                    lastXenoBossTeleportedIsland = teleportForBoss(lastXenoBossTeleportedIsland)
+                    task.wait(3)
+                end
+            end
+        end
+    end
+end)
 
 -- ═══════════════════════════════════════════════════════════════
 -- ║                    SETTINGS TAB                            ║
