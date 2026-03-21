@@ -818,6 +818,7 @@ Tab:Slider({
 
 local BossTracker = {
     Active = {},    -- { [bossName] = npcModel } — chỉ boss đang alive
+    Dead = {},      -- { [bossName] = true } — boss đã confirmed dead (tránh tele loop)
     _connections = {} -- cleanup connections
 }
 
@@ -841,16 +842,23 @@ local function registerBossNPC(npc)
     local root = npc:WaitForChild("HumanoidRootPart", 3)
     if not hum or not root then return end
 
-    -- Chỉ track nếu alive
-    if hum.Health <= 0 then return end
+    -- Boss đã chết khi load → mark Dead để không bị stuck unknown
+    if hum.Health <= 0 then
+        BossTracker.Dead[bossName] = true
+        BossTracker.Active[bossName] = nil
+        print("[BossTracker] 💀 Found dead on load: " .. bossName)
+        return
+    end
 
     BossTracker.Active[bossName] = npc
+    BossTracker.Dead[bossName] = nil -- Boss respawned → xóa khỏi Dead
     print("[BossTracker] ✅ Registered: " .. bossName .. " (HP: " .. hum.Health .. ")")
 
-    -- Khi boss chết → xóa khỏi tracker
+    -- Khi boss chết → xóa khỏi Active, thêm vào Dead
     local diedConn
     diedConn = hum.Died:Connect(function()
         BossTracker.Active[bossName] = nil
+        BossTracker.Dead[bossName] = true
         print("[BossTracker] ❌ Died: " .. bossName)
         if diedConn then diedConn:Disconnect() end
     end)
@@ -895,6 +903,18 @@ local function initBossTracker()
     print("[BossTracker] Initialized! Tracking " .. tostring(#npcsFolder:GetChildren()) .. " NPCs")
 end
 
+-- Re-scan tất cả NPCs (dùng sau khi teleport để bắt boss đã load)
+function BossTracker.RescanAll()
+    local npcsFolder = workspace:FindFirstChild("NPCs")
+    if not npcsFolder then return end
+    for _, npc in pairs(npcsFolder:GetChildren()) do
+        local bossName = isBossNPC(npc.Name)
+        if bossName and not BossTracker.Active[bossName] then
+            registerBossNPC(npc)
+        end
+    end
+end
+
 -- Khởi động tracker ngay
 task.spawn(initBossTracker)
 
@@ -902,21 +922,32 @@ task.spawn(initBossTracker)
 -- BOSS HELPERS (shared by both modes)
 -- ═══════════════════════════════════════
 
--- Helper: Lấy danh sách boss đã chọn + ALIVE (từ tracker), sort theo HP thấp nhất
+-- Helper: Lấy danh sách boss đã chọn, sort theo HP thấp nhất
+-- ★ Boss chưa load vào workspace (đảo xa) → marked unknown=true → sẽ tele đến kiểm tra
 local function getSortedSelectedBosses()
     local bossList = {}
     for bossName, _ in pairs(selectedBosses) do
         local config = timedBossConfig[bossName]
         if config then
-            -- ★ CHECK TRACKER: boss đang alive không?
             local npc = BossTracker.Active[bossName]
             local isAlive = false
-            local currentHP = math.huge -- dead = HP vô cực (sort xuống cuối)
+            local isUnknown = false
+            local currentHP = math.huge
             if npc then
                 local hum = npc:FindFirstChildOfClass("Humanoid")
                 if hum and hum.Health > 0 then
                     isAlive = true
                     currentHP = hum.Health
+                end
+                -- npc exists but dead → alive=false, unknown=false (confirmed dead)
+            else
+                -- npc == nil → chưa load vào workspace → kiểm tra Dead cache
+                if BossTracker.Dead[bossName] then
+                    -- Confirmed dead (đã từng thấy rồi chết) → coi như dead
+                    -- Dead sẽ tự clear khi boss respawn (ChildAdded → registerBossNPC)
+                else
+                    -- Chưa bao giờ thấy → UNKNOWN (có thể alive trên đảo khác)
+                    isUnknown = true
                 end
             end
             table.insert(bossList, {
@@ -924,14 +955,17 @@ local function getSortedSelectedBosses()
                 config = config,
                 hp = currentHP,
                 alive = isAlive,
+                unknown = isUnknown,
                 npc = npc
             })
         end
     end
 
-    -- Sort: alive trước, rồi HP thấp nhất trước
+    -- Sort priority: alive (HP thấp) → unknown → dead
     table.sort(bossList, function(a, b)
-        if a.alive ~= b.alive then return a.alive end
+        local aScore = a.alive and 0 or (a.unknown and 1 or 2)
+        local bScore = b.alive and 0 or (b.unknown and 1 or 2)
+        if aScore ~= bScore then return aScore < bScore end
         return a.hp < b.hp
     end)
 
@@ -1025,6 +1059,21 @@ task.spawn(function()
         local foundTarget = false
         for _, bossInfo in ipairs(sortedBosses) do
             if not bossFarmTweenEnabled then break end
+
+            -- ★ BOSS UNKNOWN (đảo xa, chưa load) → Tele đến đảo, rescan, cho loop lại
+            if bossInfo.unknown then
+                local config = bossInfo.config
+                if config.remote and lastBossTeleportedIsland ~= config.remote then
+                    print("[Bosses] 🌐 Teleporting to " .. config.remote .. " to check " .. bossInfo.name .. "...")
+                    teleportToIsland(config.remote)
+                    lastBossTeleportedIsland = config.remote
+                    task.wait(2) -- Đợi NPC load vào workspace
+                    BossTracker.RescanAll() -- ★ Scan ngay để mark alive/dead
+                end
+                -- Không break — continue outer loop để re-sort với data mới
+                break
+            end
+
             if not bossInfo.alive or not bossInfo.npc then continue end
 
             local bossNPC = bossInfo.npc
@@ -1164,6 +1213,23 @@ task.spawn(function()
         local foundTarget = false
         for _, bossInfo in ipairs(sortedBosses) do
             if not bossFarmXenoEnabled then break end
+
+            -- ★ BOSS UNKNOWN (đảo xa, chưa load) → Tele đến đảo, rescan, cho loop lại
+            if bossInfo.unknown then
+                local config = bossInfo.config
+                if config.remote and lastXenoBossTeleportedIsland ~= config.remote then
+                    print("[Bosses] 🌐 Xeno teleporting to " .. config.remote .. " to check " .. bossInfo.name .. "...")
+                    local TpRemoteBoss = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("TeleportToPortal")
+                    if TpRemoteBoss then
+                        pcall(function() TpRemoteBoss:FireServer(config.remote) end)
+                        lastXenoBossTeleportedIsland = config.remote
+                        task.wait(2)
+                        BossTracker.RescanAll() -- ★ Scan ngay để mark alive/dead
+                    end
+                end
+                break
+            end
+
             if not bossInfo.alive or not bossInfo.npc then continue end
 
             local bossNPC = bossInfo.npc
