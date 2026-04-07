@@ -47,7 +47,6 @@ local Themes = {
         Warning = Color3.fromRGB(255, 180, 50),
     }
 }
-}
 
 -- ═══════════════════════════════════════
 -- ANIMATION HELPERS
