@@ -80,7 +80,9 @@ function Spring:Update(dt)
 end
 
 local activeSprings = {}
-RunService.Heartbeat:Connect(function(dt)
+task.spawn(function()
+    while true do
+        local dt = task.wait()
     for obj, springs in pairs(activeSprings) do
         local isAlive = false
         for prop, springData in pairs(springs) do
@@ -111,6 +113,7 @@ RunService.Heartbeat:Connect(function(dt)
         if not isAlive then
             activeSprings[obj] = nil
         end
+    end
     end
 end)
 
@@ -1073,16 +1076,19 @@ function Ocean:Create(config)
             UserInputService.InputEnded:Connect(function(input)
                 if input.UserInputType == Enum.UserInputType.MouseButton1 then sliding = false end
             end)
-            RunService.Heartbeat:Connect(function()
-                if sliding then
-                    local mx = Mouse.X
-                    local left = track.AbsolutePosition.X
-                    local width = track.AbsoluteSize.X
-                    local pct = math.clamp((mx - left) / width, 0, 1)
-                    val = math.floor(min + pct * (max - min))
-                    fill.Size = UDim2.new(pct, 0, 1, 0)
-                    valLabel.Text = tostring(val)
-                    if config.Callback then config.Callback(val) end
+            task.spawn(function()
+                while true do
+                    task.wait()
+                    if sliding then
+                        local mx = Mouse.X
+                        local left = track.AbsolutePosition.X
+                        local width = track.AbsoluteSize.X
+                        local pct = math.clamp((mx - left) / width, 0, 1)
+                        val = math.floor(min + pct * (max - min))
+                        fill.Size = UDim2.new(pct, 0, 1, 0)
+                        valLabel.Text = tostring(val)
+                        if config.Callback then config.Callback(val) end
+                    end
                 end
             end)
         end
