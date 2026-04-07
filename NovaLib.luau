@@ -1048,7 +1048,7 @@ function Library:GetIcon(IconName)
     return Icon
 end
 
-function Library:GetCustomIcon(IconName): any
+function Library:GetCustomIcon(IconName)
     local CustomIcon = IsValidCustomIcon(IconName)
     if CustomIcon then
         return {
@@ -1072,7 +1072,7 @@ function Library:GetCustomIcon(IconName): any
     }
 end
 
-function Library:Validate(Table, Template): { [string]: any }
+function Library:Validate(Table, Template)
     if typeof(Table) ~= "table" then
         return Template
     end
@@ -1116,7 +1116,7 @@ local function FillInstance(Table, Instance)
     end
 end
 
-local function New(ClassName, Properties): any
+local function New(ClassName, Properties)
     local Instance = Instance.new(ClassName)
 
     if Templates[ClassName] then
@@ -1286,7 +1286,7 @@ function Library:ChangeCursorIconSize(Size)
     CursorCustomImage.Size = Size
 end
 
-function Library:GetBetterColor(Color, Add): Color3
+function Library:GetBetterColor(Color, Add)
     Add = Add * (Library.IsLightTheme and -4 or 2)
     return Color3.fromRGB(
         math.clamp(Color.R * 255 + Add, 0, 255),
@@ -1295,12 +1295,12 @@ function Library:GetBetterColor(Color, Add): Color3
     )
 end
 
-function Library:GetLighterColor(Color): Color3
+function Library:GetLighterColor(Color)
     local H, S, V = Color:ToHSV()
     return Color3.fromHSV(H, math.max(0, S - 0.1), math.min(1, V + 0.1))
 end
 
-function Library:GetDarkerColor(Color): Color3
+function Library:GetDarkerColor(Color)
     local H, S, V = Color:ToHSV()
     return Color3.fromHSV(H, S, V / 2)
 end
@@ -1313,7 +1313,7 @@ function Library:GetKeyString(KeyCode)
     return KeyCode.Name
 end
 
-function Library:GetTextBounds(Text, Font, Size, Width): (number, number)
+function Library:GetTextBounds(Text, Font, Size, Width)
     local Params = Instance.new("GetTextBoundsParams")
     Params.Text = Text
     Params.RichText = true
@@ -1325,7 +1325,7 @@ function Library:GetTextBounds(Text, Font, Size, Width): (number, number)
     return Bounds.X, Bounds.Y
 end
 
-function Library:MouseIsOverFrame(Frame, Mouse): boolean
+function Library:MouseIsOverFrame(Frame, Mouse)
     local AbsPos, AbsSize = Frame.AbsolutePosition, Frame.AbsoluteSize
     return Mouse.X >= AbsPos.X
         and Mouse.X <= AbsPos.X + AbsSize.X
@@ -1333,7 +1333,7 @@ function Library:MouseIsOverFrame(Frame, Mouse): boolean
         and Mouse.Y <= AbsPos.Y + AbsSize.Y
 end
 
-function Library:SafeCallback(Func) -> ...any, ...: any)
+function Library:SafeCallback(Func)
     if not (Func and typeof(Func) == "function") then
         return
     end
