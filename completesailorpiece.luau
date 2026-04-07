@@ -86,7 +86,7 @@ end
 -- [OCEAN HUB INJECTION START] --
 getgenv().nefasto_Running = true
 
-local NovaUrl = "https://raw.githubusercontent.com/jachvn112-droid/sailor-piece-script/27d43ea/NovaLib.luau"
+local NovaUrl = "https://raw.githubusercontent.com/jachvn112-droid/sailor-piece-script/b246c55/NovaLib.luau"
 
 -- Debug: Load with error handling
 local ok_http, NovaCode = pcall(function()
@@ -516,6 +516,7 @@ local Connections = {
     Dash = nil,
     Knockback = {},
     Reconnect = nil,
+    ReconnectKick = nil,
 }
 
 local Tables = {
@@ -1434,7 +1435,22 @@ end
 
 local function Func_AutoReconnect()
     if Connections.Reconnect then Connections.Reconnect:Disconnect() end
+    if Connections.ReconnectKick then Connections.ReconnectKick:Disconnect() end
 
+    local function DoRejoin()
+        pcall(function()
+            TeleportService:Teleport(game.PlaceId, Plr)
+        end)
+        -- Retry loop nếu teleport fail
+        task.spawn(function()
+            task.wait(8)
+            pcall(function()
+                TeleportService:Teleport(game.PlaceId, Plr)
+            end)
+        end)
+    end
+
+    -- 1. Detect error prompt (disconnect/kick message)
     Connections.Reconnect = GuiService.ErrorMessageChanged:Connect(function()
         if not Toggles.AutoReconnect.Value then return end
 
@@ -1443,16 +1459,30 @@ local function Func_AutoReconnect()
                 local promptOverlay = game:GetService("CoreGui"):FindFirstChild("RobloxPromptGui")
                 if promptOverlay then
                     local errorPrompt = promptOverlay.promptOverlay:FindFirstChild("ErrorPrompt")
-                    
                     if errorPrompt and errorPrompt.Visible then
-                        local secondaryTimer = 5
-                        
-                        task.wait(secondaryTimer)
-                        
-                        TeleportService:Teleport(game.PlaceId, Plr)
+                        task.wait(3)
+                        DoRejoin()
                     end
                 end
             end)
+        end)
+    end)
+
+    -- 2. Detect player bị remove (kicked khỏi server)
+    Connections.ReconnectKick = Players.PlayerRemoving:Connect(function(player)
+        if player == Plr and Toggles.AutoReconnect.Value then
+            task.wait(1)
+            DoRejoin()
+        end
+    end)
+
+    -- 3. Detect teleport fail
+    pcall(function()
+        TeleportService.TeleportInitFailed:Connect(function(_, err)
+            if Toggles.AutoReconnect.Value then
+                task.wait(5)
+                DoRejoin()
+            end
         end)
     end)
 end
