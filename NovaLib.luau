@@ -1333,7 +1333,7 @@ function Library:MouseIsOverFrame(Frame, Mouse)
         and Mouse.Y <= AbsPos.Y + AbsSize.Y
 end
 
-function Library:SafeCallback(Func)
+function Library:SafeCallback(Func, ...)
     if not (Func and typeof(Func) == "function") then
         return
     end
@@ -1720,13 +1720,7 @@ end
 
 --// Context Menu \\--
 local CurrentMenu
-function Library:AddContextMenu(
-    Holder, Size)
-    Offset: { [number]: number } | ()
-    List: number?,
-    ActiveCallback: (Active: boolean)
-    IgnoreCornerRadius: boolean?
-)
+function Library:AddContextMenu(Holder, Size, Offset, List, ActiveCallback, IgnoreCornerRadius)
     local Menu
     local ParentGui = Holder:FindFirstAncestorOfClass("ScreenGui")
     if ParentGui ~= ScreenGui and (Library.ActiveLoading and ParentGui ~= Library.ActiveLoading.ScreenGui) then
