@@ -153,7 +153,7 @@ do
         return success, errorMessage
     end
 
-    for AssetName, _ in CustomImageManagerAssets do
+    for AssetName, _ in pairs(CustomImageManagerAssets) do
         CustomImageManager.DownloadAsset(AssetName)
     end
 end
@@ -568,7 +568,7 @@ end
 local function GetTableSize(Table)
     local Size = 0
 
-    for _, _ in Table do
+    for _, _ in pairs(Table) do
         Size += 1
     end
 
@@ -621,7 +621,7 @@ local function GetTeams()
 end
 
 function Library:UpdateDependencyBoxes()
-    for _, Depbox in Library.DependencyBoxes do
+    for _, Depbox in pairs(Library.DependencyBoxes) do
         Depbox:Update(true)
     end
 
@@ -633,7 +633,7 @@ end
 local function CheckDepbox(Box, Search)
     local VisibleElements = 0
 
-    for _, ElementInfo in Box.Elements do
+    for _, ElementInfo in pairs(Box.Elements) do
         if ElementInfo.Type == "Divider" then
             ElementInfo.Holder.Visible = false
             continue
@@ -669,7 +669,7 @@ local function CheckDepbox(Box, Search)
         end
     end
 
-    for _, Depbox in Box.DependencyBoxes do
+    for _, Depbox in pairs(Box.DependencyBoxes) do
         if not Depbox.Visible then
             continue
         end
@@ -681,7 +681,7 @@ local function CheckDepbox(Box, Search)
     return VisibleElements
 end
 local function RestoreDepbox(Box)
-    for _, ElementInfo in Box.Elements do
+    for _, ElementInfo in pairs(Box.Elements) do
         ElementInfo.Holder.Visible = typeof(ElementInfo.Visible) == "boolean" and ElementInfo.Visible or true
 
         if ElementInfo.SubButton then
@@ -693,7 +693,7 @@ local function RestoreDepbox(Box)
     Box:Resize()
     Box.Holder.Visible = true
 
-    for _, Depbox in Box.DependencyBoxes do
+    for _, Depbox in pairs(Box.DependencyBoxes) do
         if not Depbox.Visible then
             continue
         end
@@ -710,10 +710,10 @@ local function ApplySearchToTab(Tab, Search)
     local HasVisible = false
 
     --// Loop through Groupboxes to get Elements Info
-    for _, Groupbox in Tab.Groupboxes do
+    for _, Groupbox in pairs(Tab.Groupboxes) do
         local VisibleElements = 0
 
-        for _, ElementInfo in Groupbox.Elements do
+        for _, ElementInfo in pairs(Groupbox.Elements) do
             if ElementInfo.Type == "Divider" then
                 ElementInfo.Holder.Visible = false
                 continue
@@ -749,7 +749,7 @@ local function ApplySearchToTab(Tab, Search)
             end
         end
 
-        for _, Depbox in Groupbox.DependencyBoxes do
+        for _, Depbox in pairs(Groupbox.DependencyBoxes) do
             if not Depbox.Visible then
                 continue
             end
@@ -765,14 +765,14 @@ local function ApplySearchToTab(Tab, Search)
         Groupbox.BoxHolder.Visible = VisibleElements > 0
     end
 
-    for _, Tabbox in Tab.Tabboxes do
+    for _, Tabbox in pairs(Tab.Tabboxes) do
         local VisibleTabs = 0
         local VisibleElements = {}
 
-        for _, SubTab in Tabbox.Tabs do
+        for _, SubTab in pairs(Tabbox.Tabs) do
             VisibleElements[SubTab] = 0
 
-            for _, ElementInfo in SubTab.Elements do
+            for _, ElementInfo in pairs(SubTab.Elements) do
                 if ElementInfo.Type == "Divider" then
                     ElementInfo.Holder.Visible = false
                     continue
@@ -808,7 +808,7 @@ local function ApplySearchToTab(Tab, Search)
                 end
             end
 
-            for _, Depbox in SubTab.DependencyBoxes do
+            for _, Depbox in pairs(SubTab.DependencyBoxes) do
                 if not Depbox.Visible then
                     continue
                 end
@@ -817,7 +817,7 @@ local function ApplySearchToTab(Tab, Search)
             end
         end
 
-        for SubTab, Visible in VisibleElements do
+        for SubTab, Visible in pairs(VisibleElements) do
             SubTab.ButtonHolder.Visible = Visible > 0
             if Visible > 0 then
                 VisibleTabs += 1
@@ -842,8 +842,8 @@ local function ResetTab(Tab)
         return
     end
 
-    for _, Groupbox in Tab.Groupboxes do
-        for _, ElementInfo in Groupbox.Elements do
+    for _, Groupbox in pairs(Tab.Groupboxes) do
+        for _, ElementInfo in pairs(Groupbox.Elements) do
             ElementInfo.Holder.Visible = typeof(ElementInfo.Visible) == "boolean" and ElementInfo.Visible or true
 
             if ElementInfo.SubButton then
@@ -852,7 +852,7 @@ local function ResetTab(Tab)
             end
         end
 
-        for _, Depbox in Groupbox.DependencyBoxes do
+        for _, Depbox in pairs(Groupbox.DependencyBoxes) do
             if not Depbox.Visible then
                 continue
             end
@@ -864,9 +864,9 @@ local function ResetTab(Tab)
         Groupbox.BoxHolder.Visible = true
     end
 
-    for _, Tabbox in Tab.Tabboxes do
-        for _, SubTab in Tabbox.Tabs do
-            for _, ElementInfo in SubTab.Elements do
+    for _, Tabbox in pairs(Tab.Tabboxes) do
+        for _, SubTab in pairs(Tabbox.Tabs) do
+            for _, ElementInfo in pairs(SubTab.Elements) do
                 ElementInfo.Holder.Visible = typeof(ElementInfo.Visible) == "boolean" and ElementInfo.Visible or true
 
                 if ElementInfo.SubButton then
@@ -875,7 +875,7 @@ local function ResetTab(Tab)
                 end
             end
 
-            for _, Depbox in SubTab.DependencyBoxes do
+            for _, Depbox in pairs(SubTab.DependencyBoxes) do
                 if not Depbox.Visible then
                     continue
                 end
@@ -899,7 +899,7 @@ function Library:UpdateSearch(SearchText)
     local TabsToReset = {}
 
     if Library.GlobalSearch then
-        for _, Tab in Library.Tabs do
+        for _, Tab in pairs(Library.Tabs) do
             if typeof(Tab) == "table" and not Tab.IsKeyTab then
                 table.insert(TabsToReset, Tab)
             end
@@ -931,7 +931,7 @@ function Library:UpdateSearch(SearchText)
     if Library.GlobalSearch then
         TabsToSearch = TabsToReset
         if #TabsToSearch == 0 then
-            for _, Tab in Library.Tabs do
+            for _, Tab in pairs(Library.Tabs) do
                 if typeof(Tab) == "table" and not Tab.IsKeyTab then
                     table.insert(TabsToSearch, Tab)
                 end
@@ -986,8 +986,8 @@ function Library:RemoveFromRegistry(Instance)
 end
 
 function Library:UpdateColorsUsingRegistry()
-    for Instance, Properties in Library.Registry do
-        for Property, Index in Properties do
+    for Instance, Properties in pairs(Library.Registry) do
+        for Property, Index in pairs(Properties) do
             local SchemeValue = GetSchemeValue(Index)
 
             if SchemeValue or typeof(Index) == "function" then
@@ -1001,17 +1001,17 @@ function Library:SetDPIScale(DPIScale)
     Library.DPIScale = DPIScale / 100
     Library.MinSize = Library.OriginalMinSize * Library.DPIScale
 
-    for _, UIScale in Library.Scales do
+    for _, UIScale in pairs(Library.Scales) do
         UIScale.Scale = Library.DPIScale
     end
 
-    for _, Option in Options do
+    for _, Option in pairs(Options) do
         if Option.Type == "Dropdown" then
             Option:RecalculateListSize()
         end
     end
 
-    for _, Notification in Library.Notifications do
+    for _, Notification in pairs(Library.Notifications) do
         Notification:Resize()
     end
 end
@@ -1077,7 +1077,7 @@ function Library:Validate(Table, Template): { [string]: any }
         return Template
     end
 
-    for k, v in Template do
+    for k, v in pairs(Template) do
         if typeof(k) == "number" then
             continue
         end
@@ -1096,7 +1096,7 @@ end
 local function FillInstance(Table, Instance)
     local ThemeProperties = Library.Registry[Instance] or {}
 
-    for key, value in Table do
+    for key, value in pairs(Table) do
         if key ~= "Text" then
             local SchemeValue = GetSchemeValue(value)
 
@@ -2040,11 +2040,11 @@ function Library:Unload()
         end
     end
 
-    for _, Callback in Library.UnloadSignals do
+    for _, Callback in pairs(Library.UnloadSignals) do
         Library:SafeCallback(Callback)
     end
 
-    for _, Tooltip in Tooltips do
+    for _, Tooltip in pairs(Tooltips) do
         Library:SafeCallback(Tooltip.Destroy, Tooltip)
     end
 
@@ -2179,7 +2179,7 @@ do
         local GetActiveModifiers = function()
             local ActiveModifiers = {}
 
-            for Name, Input in Modifiers do
+            for Name, Input in pairs(Modifiers) do
                 if table.find(ActiveModifiers, Name) then
                     continue
                 end
@@ -2201,7 +2201,7 @@ do
             local ActiveModifiers = GetActiveModifiers()
             local Holding = true
 
-            for _, Name in Required do
+            for _, Name in pairs(Required) do
                 if table.find(ActiveModifiers, Name) then
                     continue
                 end
@@ -2231,7 +2231,7 @@ do
         local ConvertToInputModifiers = function(CurrentModifiers)
             local InputModifiers = {}
 
-            for _, name in CurrentModifiers do
+            for _, name in pairs(CurrentModifiers) do
                 table.insert(InputModifiers, Modifiers[name])
             end
 
@@ -2245,7 +2245,7 @@ do
 
             local ValidModifiers = {}
 
-            for _, name in CurrentModifiers do
+            for _, name in pairs(CurrentModifiers) do
                 if not Modifiers[name] then
                     continue
                 end
@@ -2374,7 +2374,7 @@ do
         KeyPicker.Menu = MenuTable
 
         local ModeButtons = {}
-        for _, Mode in Info.Modes do
+        for _, Mode in pairs(Info.Modes) do
             local ModeButton = {}
 
             local Button = New("TextButton", {
@@ -2388,7 +2388,7 @@ do
             })
 
             function ModeButton:Select()
-                for _, Button in ModeButtons do
+                for _, Button in pairs(ModeButtons) do
                     Button:Deselect()
                 end
 
@@ -3871,7 +3871,7 @@ do
             Toggle.Value = Value
             Toggle:Display()
 
-            for _, Addon in Toggle.Addons do
+            for _, Addon in pairs(Toggle.Addons) do
                 if Addon.Type == "KeyPicker" and Addon.SyncToggleState then
                     Addon.Toggled = Toggle.Value
                     Addon:Update()
@@ -3890,7 +3890,7 @@ do
                 Toggle.TooltipTable.Disabled = Toggle.Disabled
             end
 
-            for _, Addon in Toggle.Addons do
+            for _, Addon in pairs(Toggle.Addons) do
                 if Addon.Type == "KeyPicker" and Addon.SyncToggleState then
                     Addon:Update()
                 end
@@ -4093,7 +4093,7 @@ do
             Toggle.Value = Value
             Toggle:Display()
 
-            for _, Addon in Toggle.Addons do
+            for _, Addon in pairs(Toggle.Addons) do
                 if Addon.Type == "KeyPicker" and Addon.SyncToggleState then
                     Addon.Toggled = Toggle.Value
                     Addon:Update()
@@ -4112,7 +4112,7 @@ do
                 Toggle.TooltipTable.Disabled = Toggle.Disabled
             end
 
-            for _, Addon in Toggle.Addons do
+            for _, Addon in pairs(Toggle.Addons) do
                 if Addon.Type == "KeyPicker" and Addon.SyncToggleState then
                     Addon:Update()
                 end
@@ -4595,7 +4595,7 @@ do
             end
 
             if Library.ActiveTab then
-                for _, Side in Library.ActiveTab.Sides do
+                for _, Side in pairs(Library.ActiveTab.Sides) do
                     Side.ScrollingEnabled = false
                 end
             end
@@ -4621,7 +4621,7 @@ do
             end
 
             if Library.ActiveTab then
-                for _, Side in Library.ActiveTab.Sides do
+                for _, Side in pairs(Library.ActiveTab.Sides) do
                     Side.ScrollingEnabled = true
                 end
             end
@@ -4820,7 +4820,7 @@ do
             local Str = ""
 
             if Info.Multi then
-                for _, Value in Dropdown.Values do
+                for _, Value in pairs(Dropdown.Values) do
                     if Dropdown.Value[Value] then
                         Str = Str
                             .. (Info.FormatDisplayValue and tostring(Info.FormatDisplayValue(Value)) or tostring(Value))
@@ -4851,7 +4851,7 @@ do
             if Info.Multi then
                 local Table = {}
 
-                for Value, _ in Dropdown.Value do
+                for Value, _ in pairs(Dropdown.Value) do
                     table.insert(Table, Value)
                 end
 
@@ -4866,13 +4866,13 @@ do
             local Values = Dropdown.Values
             local DisabledValues = Dropdown.DisabledValues
 
-            for Button, _ in Buttons do
+            for Button, _ in pairs(Buttons) do
                 Button:Destroy()
             end
             table.clear(Buttons)
 
             local Count = 0
-            for _, Value in Values do
+            for _, Value in pairs(Values) do
                 local FormattedValue = tostring(Info.FormatListValue and Info.FormatListValue(Value) or Value)
                 if SearchBox and not FormattedValue:lower():match(SearchBox.Text:lower()) then
                     continue
@@ -4930,7 +4930,7 @@ do
                                 Dropdown.Value = Selected and Value or nil
                             end
 
-                            for _, OtherButton in Buttons do
+                            for _, OtherButton in pairs(Buttons) do
                                 OtherButton:UpdateButton()
                             end
                         end
@@ -4975,7 +4975,7 @@ do
             end
 
             Dropdown:Display()
-            for _, Button in Buttons do
+            for _, Button in pairs(Buttons) do
                 Button:UpdateButton()
             end
 
@@ -4993,7 +4993,7 @@ do
 
         function Dropdown:AddValues(Values)
             if typeof(Values) == "table" then
-                for _, val in Values do
+                for _, val in pairs(Values) do
                     table.insert(Dropdown.Values, val)
                 end
             elseif typeof(Values) == "string" then
@@ -5012,7 +5012,7 @@ do
 
         function Dropdown:AddDisabledValues(DisabledValues)
             if typeof(DisabledValues) == "table" then
-                for _, val in DisabledValues do
+                for _, val in pairs(DisabledValues) do
                     table.insert(Dropdown.DisabledValues, val)
                 end
             elseif typeof(DisabledValues) == "string" then
@@ -5211,7 +5211,7 @@ do
                 return
             end
 
-            for _, Side in Groupbox.Tab.Sides do
+            for _, Side in pairs(Groupbox.Tab.Sides) do
                 Side.ScrollingEnabled = false
             end
         end)
@@ -5221,7 +5221,7 @@ do
                 return
             end
 
-            for _, Side in Groupbox.Tab.Sides do
+            for _, Side in pairs(Groupbox.Tab.Sides) do
                 Side.ScrollingEnabled = true
             end
         end)
@@ -5760,7 +5760,7 @@ do
         end
 
         function Depbox:Update(CancelSearch)
-            for _, Dependency in Depbox.Dependencies do
+            for _, Dependency in pairs(Depbox.Dependencies) do
                 local Element = Dependency[1]
                 local Value = Dependency[2]
 
@@ -5805,7 +5805,7 @@ do
         end)
 
         function Depbox:SetupDependencies(Dependencies)
-            for _, Dependency in Dependencies do
+            for _, Dependency in pairs(Dependencies) do
                 assert(typeof(Dependency) == "table", "Dependency should be a table.")
                 assert(Dependency[1] ~= nil, "Dependency is missing element.")
                 assert(Dependency[2] ~= nil, "Dependency is missing expected value.")
@@ -5882,7 +5882,7 @@ do
         end
 
         function DepGroupbox:Update(CancelSearch)
-            for _, Dependency in DepGroupbox.Dependencies do
+            for _, Dependency in pairs(DepGroupbox.Dependencies) do
                 local Element = Dependency[1]
                 local Value = Dependency[2]
 
@@ -5917,7 +5917,7 @@ do
         end
 
         function DepGroupbox:SetupDependencies(Dependencies)
-            for _, Dependency in Dependencies do
+            for _, Dependency in pairs(Dependencies) do
                 assert(typeof(Dependency) == "table", "Dependency should be a table.")
                 assert(Dependency[1] ~= nil, "Dependency is missing element.")
                 assert(Dependency[2] ~= nil, "Dependency is missing expected value.")
@@ -6646,7 +6646,7 @@ function Library:CreateWindow(WindowInfo)
             })
 
             Library:MakeResizable(MainFrame, ResizeButton, function()
-                for _, Tab in Library.Tabs do
+                for _, Tab in pairs(Library.Tabs) do
                     Tab:Resize(true)
                 end
             end)
@@ -6727,7 +6727,7 @@ function Library:CreateWindow(WindowInfo)
         assert(typeof(Radius) == "number", "Expected number for Radius got: " .. typeof(Radius))
         Radius = math.min(Radius, 20)
 
-        for _, UICorner in Library.Corners do
+        for _, UICorner in pairs(Library.Corners) do
             if UICorner.CornerRadius.Offset == Library.CornerRadius / 2 then
                 UICorner.CornerRadius = UDim.new(0, Radius / 2)
             else
@@ -6741,12 +6741,12 @@ function Library:CreateWindow(WindowInfo)
         ResizeButton.Position = UDim2.new(1, -Radius / 4, 0, 0)
         BottomBackground.Size = UDim2.new(1, 0, 0, 20 + Radius)
 
-        for _, Tab in Library.Tabs do
+        for _, Tab in pairs(Library.Tabs) do
             if Tab.IsKeyTab then
                 continue
             end
 
-            for _, Tabbox in Tab.Tabboxes do
+            for _, Tabbox in pairs(Tab.Tabboxes) do
                 Tabbox:UpdateCorners()
             end
         end
@@ -6763,7 +6763,7 @@ function Library:CreateWindow(WindowInfo)
             WindowIcon.Visible = IsCompact
         end
 
-        for _, Button in Library.TabButtons do
+        for _, Button in pairs(Library.TabButtons) do
             if not Button.Icon then
                 continue
             end
@@ -7152,7 +7152,7 @@ function Library:CreateWindow(WindowInfo)
 
         function Tab:RefreshSides()
             local Offset = WarningBoxHolder.Visible and WarningBox.Size.Y.Offset + 8 or 0
-            for _, Side in Tab.Sides do
+            for _, Side in pairs(Tab.Sides) do
                 Side.Position = UDim2.new(Side.Position.X.Scale, 0, 0, Offset)
                 Side.Size = UDim2.new(0.5, -3, 1, -Offset)
             end
@@ -7361,7 +7361,7 @@ function Library:CreateWindow(WindowInfo)
             }
 
             function Tabbox:UpdateCorners()
-                for _, Tab in Tabbox.Tabs do
+                for _, Tab in pairs(Tabbox.Tabs) do
                     Tab:UpdateCorners()
                 end
             end
@@ -8165,7 +8165,7 @@ function Library:CreateWindow(WindowInfo)
             local ButtonCount = 0
             local HasButtons = false
 
-            for _, BtnWrap in FooterButtonsList do
+            for _, BtnWrap in pairs(FooterButtonsList) do
                 HasButtons = true
                 ButtonCount = ButtonCount + 1
                 TotalButtonWidth = TotalButtonWidth + BtnWrap.Container.Size.X.Offset
@@ -8399,7 +8399,7 @@ function Library:CreateWindow(WindowInfo)
             FooterButtonsList[ButtonIdx] = ButtonWrap
         end
 
-        for BIdx, BInfo in Info.FooterButtons do
+        for BIdx, BInfo in pairs(Info.FooterButtons) do
             if type(BIdx) == "number" and BInfo.Id then BIdx = BInfo.Id end
             Dialog:AddFooterButton(BIdx, BInfo)
         end
@@ -8450,7 +8450,7 @@ function Library:CreateWindow(WindowInfo)
         elseif not Library.Toggled then
             TooltipLabel.Visible = false
 
-            for _, Option in Library.Options do
+            for _, Option in pairs(Library.Options) do
                 if Option.Type == "ColorPicker" then
                     Option.ColorMenu:Close()
                     Option.ContextMenu:Close()
@@ -9138,7 +9138,7 @@ function Library:CreateLoading(LoadingInfo)
         ErrorButtonsHolder.Visible = HasButtons
         ErrorButtonsDivider.Visible = HasButtons
 
-        for Idx, ButtonInfo in Buttons do
+        for Idx, ButtonInfo in pairs(Buttons) do
             local ButtonContainer = New("Frame", {
                 BackgroundTransparency = 1,
                 Size = UDim2.fromOffset(0, 26),
@@ -9263,7 +9263,7 @@ local function OnPlayerChange()
     end
 
     local PlayerList, ExcludedPlayerList = GetPlayers(), GetPlayers(true)
-    for _, Dropdown in Options do
+    for _, Dropdown in pairs(Options) do
         if Dropdown.Type == "Dropdown" and Dropdown.SpecialType == "Player" then
             Dropdown:SetValues(Dropdown.ExcludeLocalPlayer and ExcludedPlayerList or PlayerList)
         end
@@ -9276,7 +9276,7 @@ local function OnTeamChange()
     end
 
     local TeamList = GetTeams()
-    for _, Dropdown in Options do
+    for _, Dropdown in pairs(Options) do
         if Dropdown.Type == "Dropdown" and Dropdown.SpecialType == "Team" then
             Dropdown:SetValues(TeamList)
         end
@@ -9454,7 +9454,7 @@ do
     end
 
     function ThemeManager:ThemeUpdate()
-        for i, field in ThemeFields do
+        for i, field in pairs(ThemeFields) do
             if self.Library.Options and self.Library.Options[field] then
                 self.Library.Scheme[field] = self.Library.Options[field].Value
             end
@@ -9513,7 +9513,7 @@ do
 
         local FinalTheme = {}
         local LibraryScheme = {}
-        for _, field in ThemeFields do
+        for _, field in pairs(ThemeFields) do
             if typeof(theme[field]) == "Color3" then
                 FinalTheme[field] = "#" .. theme[field]:ToHex()
                 LibraryScheme[field] = theme[field]
@@ -9562,7 +9562,7 @@ do
         end
 
         local theme = {}
-        for _, field in ThemeFields do
+        for _, field in pairs(ThemeFields) do
             theme[field] = self.Library.Options[field].Value:ToHex()
         end
         theme["FontFace"] = self.Library.Options["FontFace"].Value
