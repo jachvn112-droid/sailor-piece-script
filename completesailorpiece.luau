@@ -86,7 +86,7 @@ end
 -- [OCEAN HUB INJECTION START] --
 getgenv().nefasto_Running = true
 
-local NovaUrl = "https://raw.githubusercontent.com/jachvn112-droid/sailor-piece-script/b1a8adc/NovaLib.luau"
+local NovaUrl = "https://raw.githubusercontent.com/jachvn112-droid/sailor-piece-script/80dc3f0/NovaLib.luau"
 
 -- Debug: Load with error handling
 local ok_http, NovaCode = pcall(function()
@@ -517,6 +517,7 @@ local Connections = {
     Knockback = {},
     Reconnect = nil,
     ReconnectKick = nil,
+    ReconnectPoll = nil,
 }
 
 local Tables = {
@@ -1434,56 +1435,86 @@ local function DisableIdled()
 end
 
 local function Func_AutoReconnect()
-    if Connections.Reconnect then Connections.Reconnect:Disconnect() end
-    if Connections.ReconnectKick then Connections.ReconnectKick:Disconnect() end
+    if Connections.Reconnect then pcall(function() Connections.Reconnect:Disconnect() end) end
+    if Connections.ReconnectKick then pcall(function() Connections.ReconnectKick:Disconnect() end) end
+    if Connections.ReconnectPoll then pcall(function() Connections.ReconnectPoll:Disconnect() end) end
 
+    local rejoining = false
     local function DoRejoin()
+        if rejoining then return end
+        rejoining = true
+        warn("[AutoReconnect] Rejoining...")
+
+        -- Queue script to re-execute after teleport
         pcall(function()
+            if queue_on_teleport then
+                queue_on_teleport('task.wait(5); loadstring(game:HttpGet("https://raw.githubusercontent.com/jachvn112-droid/sailor-piece-script/main/loader.luau"))()')
+            end
+        end)
+
+        task.wait(2)
+        
+        -- Try teleport
+        local _ok = pcall(function()
             TeleportService:Teleport(game.PlaceId, Plr)
         end)
-        -- Retry loop nếu teleport fail
+        
+        -- Retry loop
         task.spawn(function()
-            task.wait(8)
-            pcall(function()
-                TeleportService:Teleport(game.PlaceId, Plr)
-            end)
+            for i = 1, 5 do
+                task.wait(8)
+                if not rejoining then break end
+                pcall(function()
+                    TeleportService:Teleport(game.PlaceId, Plr)
+                end)
+            end
         end)
     end
 
-    -- 1. Detect error prompt (disconnect/kick message)
+    -- 1. Error prompt detection (ErrorMessageChanged)
     Connections.Reconnect = GuiService.ErrorMessageChanged:Connect(function()
-        if not Toggles.AutoReconnect.Value then return end
-
-        task.delay(2, function()
-            pcall(function()
-                local promptOverlay = game:GetService("CoreGui"):FindFirstChild("RobloxPromptGui")
-                if promptOverlay then
-                    local errorPrompt = promptOverlay.promptOverlay:FindFirstChild("ErrorPrompt")
-                    if errorPrompt and errorPrompt.Visible then
-                        task.wait(3)
-                        DoRejoin()
-                    end
-                end
-            end)
-        end)
+        if not Toggles.AutoReconnect or not Toggles.AutoReconnect.Value then return end
+        task.delay(1, DoRejoin)
     end)
 
-    -- 2. Detect player bị remove (kicked khỏi server)
+    -- 2. Player removed detection (kicked)
     Connections.ReconnectKick = Players.PlayerRemoving:Connect(function(player)
-        if player == Plr and Toggles.AutoReconnect.Value then
-            task.wait(1)
-            DoRejoin()
+        if player == Plr and Toggles.AutoReconnect and Toggles.AutoReconnect.Value then
+            task.delay(1, DoRejoin)
         end
     end)
 
-    -- 3. Detect teleport fail
+    -- 3. Teleport fail retry
     pcall(function()
         TeleportService.TeleportInitFailed:Connect(function(_, err)
-            if Toggles.AutoReconnect.Value then
+            if Toggles.AutoReconnect and Toggles.AutoReconnect.Value then
+                warn("[AutoReconnect] Teleport failed:", err, "- retrying...")
                 task.wait(5)
                 DoRejoin()
             end
         end)
+    end)
+
+    -- 4. Polling: check cho error prompt GUI (backup cho trường hợp ErrorMessageChanged ko fire)
+    task.spawn(function()
+        while task.wait(2) do
+            if not Toggles.AutoReconnect or not Toggles.AutoReconnect.Value then continue end
+            if rejoining then break end
+            pcall(function()
+                local coreGui = game:GetService("CoreGui")
+                local promptGui = coreGui:FindFirstChild("RobloxPromptGui")
+                if promptGui then
+                    local overlay = promptGui:FindFirstChild("promptOverlay")
+                    if overlay then
+                        local errorPrompt = overlay:FindFirstChild("ErrorPrompt")
+                        if errorPrompt and errorPrompt.Visible then
+                            warn("[AutoReconnect] Error prompt detected via polling!")
+                            DoRejoin()
+                        end
+                    end
+                end
+            end)
+        end
     end)
 end
 
