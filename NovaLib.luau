@@ -9540,11 +9540,13 @@ do
         end
 
         self.Library.Scheme = LibraryScheme
-        self.BuiltInThemes        ["Ocean Deep Sea"] = {
-            0,
-            { FontColor = "c8e6ff", MainColor = "0f1628", AccentColor = "00c8d7", BackgroundColor = "0a0e1c", OutlineColor = "192841" },
-        },
-        ["Default"] = { 1, FinalTheme }
+        self.BuiltInThemes = {
+            ["Ocean Deep Sea"] = {
+                0,
+                { FontColor = "c8e6ff", MainColor = "0f1628", AccentColor = "00c8d7", BackgroundColor = "0a0e1c", OutlineColor = "192841" },
+            },
+            ["Default"] = { 1, FinalTheme },
+        }
 
         self.Library:UpdateColorsUsingRegistry()
     end
