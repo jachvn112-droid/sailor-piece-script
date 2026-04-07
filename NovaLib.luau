@@ -1,6 +1,6 @@
 --[[
     ╔══════════════════════════════════════════╗
-    ║         🌟 NovaLib UI Library 🌟         ║
+    ║         🌟 OceanLib UI Library 🌟         ║
     ║   Premium Roblox UI Library v1.0         ║
     ║   Author: jachvn112-droid                ║
     ╚══════════════════════════════════════════╝
@@ -22,6 +22,18 @@ local Mouse = Player:GetMouse()
 -- THEME SYSTEM
 -- ═══════════════════════════════════════
 local Themes = {
+    DeepSea = {
+        Primary = Color3.fromRGB(8, 12, 20),
+        Secondary = Color3.fromRGB(12, 25, 45),
+        Accent = Color3.fromRGB(0, 220, 255),
+        AccentGlow = Color3.fromRGB(50, 255, 230),
+        Text = Color3.fromRGB(220, 240, 255),
+        SubText = Color3.fromRGB(100, 150, 190),
+        Border = Color3.fromRGB(20, 45, 80),
+        Success = Color3.fromRGB(0, 255, 150),
+        Error = Color3.fromRGB(255, 80, 110),
+        Warning = Color3.fromRGB(255, 190, 60),
+    },
     Midnight = {
         Primary = Color3.fromRGB(15, 15, 25),
         Secondary = Color3.fromRGB(22, 22, 38),
@@ -33,49 +45,103 @@ local Themes = {
         Success = Color3.fromRGB(80, 220, 130),
         Error = Color3.fromRGB(255, 80, 90),
         Warning = Color3.fromRGB(255, 180, 50),
-    },
-    Ocean = {
-        Primary = Color3.fromRGB(10, 18, 30),
-        Secondary = Color3.fromRGB(15, 28, 48),
-        Accent = Color3.fromRGB(0, 180, 255),
-        AccentGlow = Color3.fromRGB(50, 200, 255),
-        Text = Color3.fromRGB(220, 235, 250),
-        SubText = Color3.fromRGB(120, 150, 180),
-        Border = Color3.fromRGB(30, 50, 80),
-        Success = Color3.fromRGB(0, 230, 150),
-        Error = Color3.fromRGB(255, 70, 100),
-        Warning = Color3.fromRGB(255, 200, 60),
-    },
-    Sakura = {
-        Primary = Color3.fromRGB(25, 12, 18),
-        Secondary = Color3.fromRGB(40, 18, 28),
-        Accent = Color3.fromRGB(255, 100, 150),
-        AccentGlow = Color3.fromRGB(255, 140, 180),
-        Text = Color3.fromRGB(250, 230, 240),
-        SubText = Color3.fromRGB(180, 140, 160),
-        Border = Color3.fromRGB(70, 35, 50),
-        Success = Color3.fromRGB(100, 230, 160),
-        Error = Color3.fromRGB(255, 80, 80),
-        Warning = Color3.fromRGB(255, 190, 80),
-    },
-    Emerald = {
-        Primary = Color3.fromRGB(10, 20, 15),
-        Secondary = Color3.fromRGB(15, 32, 22),
-        Accent = Color3.fromRGB(0, 220, 130),
-        AccentGlow = Color3.fromRGB(50, 240, 160),
-        Text = Color3.fromRGB(220, 250, 235),
-        SubText = Color3.fromRGB(120, 170, 140),
-        Border = Color3.fromRGB(25, 60, 40),
-        Success = Color3.fromRGB(0, 255, 150),
-        Error = Color3.fromRGB(255, 90, 90),
-        Warning = Color3.fromRGB(255, 200, 60),
-    },
+    }
+}
 }
 
 -- ═══════════════════════════════════════
 -- ANIMATION HELPERS
 -- ═══════════════════════════════════════
+
+-- ═══════════════════════════════════════
+-- REACT-SPRING PHYSICS ENGINE
+-- ═══════════════════════════════════════
+local Spring = {}
+Spring.__index = Spring
+
+function Spring.new(initial, mass, damping, stiffness)
+    local self = setmetatable({
+        Target = initial,
+        Value = initial,
+        Velocity = 0,
+        Mass = mass or 1,
+        Damping = damping or 12,
+        Stiffness = stiffness or 120
+    }, Spring)
+    return self
+end
+
+function Spring:Update(dt)
+    local f = self.Stiffness * (self.Target - self.Value)
+    local d = self.Damping * self.Velocity
+    local a = (f - d) / self.Mass
+    self.Velocity = self.Velocity + a * dt
+    self.Value = self.Value + self.Velocity * dt
+    return self.Value
+end
+
+local activeSprings = {}
+RunService.RenderStepped:Connect(function(dt)
+    for obj, springs in pairs(activeSprings) do
+        local isAlive = false
+        for prop, springData in pairs(springs) do
+            local s = springData.Spring
+            local v = s:Update(dt)
+            if math.abs(s.Target - s.Value) > 0.001 or math.abs(s.Velocity) > 0.001 then
+                isAlive = true
+            else
+                v = s.Target
+            end
+            
+            pcall(function()
+                if prop == "Position" or prop == "Size" then
+                    if springData.Mode == "XScale" then
+                        obj[prop] = UDim2.new(v, obj[prop].X.Offset, obj[prop].Y.Scale, obj[prop].Y.Offset)
+                    elseif springData.Mode == "XOffset" then
+                        obj[prop] = UDim2.new(obj[prop].X.Scale, v, obj[prop].Y.Scale, obj[prop].Y.Offset)
+                    elseif springData.Mode == "YOffset" then
+                        obj[prop] = UDim2.new(obj[prop].X.Scale, obj[prop].X.Offset, obj[prop].Y.Scale, v)
+                    elseif springData.Mode == "YScale" then
+                        obj[prop] = UDim2.new(obj[prop].X.Scale, obj[prop].X.Offset, v, obj[prop].Y.Offset)
+                    elseif springData.Mode == "AllScale" then
+                        obj[prop] = UDim2.new(v, 0, v, 0)
+                    end
+                end
+            end)
+        end
+        if not isAlive then
+            activeSprings[obj] = nil
+        end
+    end
+end)
+
+local function springTween(obj, prop, mode, targetValue, mass, damping, stiffness)
+    if not obj then return end
+    activeSprings[obj] = activeSprings[obj] or {}
+    local currentVal = targetValue
+    pcall(function()
+        if mode == "XScale" then currentVal = obj[prop].X.Scale 
+        elseif mode == "XOffset" then currentVal = obj[prop].X.Offset
+        elseif mode == "YScale" then currentVal = obj[prop].Y.Scale
+        elseif mode == "YOffset" then currentVal = obj[prop].Y.Offset
+        elseif mode == "AllScale" then currentVal = obj[prop].X.Scale
+        end
+    end)
+
+    if not activeSprings[obj][prop] then
+        activeSprings[obj][prop] = {
+            Mode = mode,
+            Spring = Spring.new(currentVal, mass, damping, stiffness)
+        }
+    end
+    activeSprings[obj][prop].Spring.Target = targetValue
+    activeSprings[obj][prop].Spring.Mass = mass or 1
+    activeSprings[obj][prop].Spring.Damping = damping or 12
+    activeSprings[obj][prop].Spring.Stiffness = stiffness or 120
+end
+
 local function tween(obj, props, duration, style, dir)
+
     local info = TweenInfo.new(duration or 0.3, style or Enum.EasingStyle.Quint, dir or Enum.EasingDirection.Out)
     local t = TweenService:Create(obj, info, props)
     t:Play()
@@ -128,22 +194,22 @@ local function addPadding(parent, t, b, l, r)
 end
 
 -- ═══════════════════════════════════════
--- NOVA LIBRARY
+-- OCEAN LIBRARY
 -- ═══════════════════════════════════════
-local Nova = {}
-Nova.Themes = Themes
+local Ocean = {}
+Ocean.Themes = Themes
 
-function Nova:Create(config)
-    local name = config.Name or "Nova Hub"
-    local theme = config.Theme or Themes.Midnight
+function Ocean:Create(config)
+    local name = config.Name or "Ocean Hub"
+    local theme = config.Theme or Themes.DeepSea
     local size = config.Size or UDim2.fromOffset(620, 420)
     -- Logo Asset ID: upload hình nova_hub_logo.png lên Roblox và thay ID ở đây
-    local logoAssetId = config.LogoId or "rbxassetid://119611823018418"
+    local logoAssetId = config.LogoId or "rbxassetid://12066804564"
     local skipSplash = config.SkipSplash or false
 
     -- Main ScreenGui
     local gui = Instance.new("ScreenGui")
-    gui.Name = "NovaLib_" .. name
+    gui.Name = "OceanLib_" .. name
     gui.ResetOnSpawn = false
     gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     gui.IgnoreGuiInset = true
@@ -168,41 +234,47 @@ function Nova:Create(config)
         particleHolder.ZIndex = 201
         particleHolder.Parent = splashOverlay
 
-        -- Spawn floating star particles
+        -- Spawn rising sea bubbles
         task.spawn(function()
-            for i = 1, 30 do
-                task.wait(0.05)
+            for i = 1, 35 do
+                task.wait(0.04)
                 local particle = Instance.new("Frame")
-                particle.Size = UDim2.fromOffset(math.random(2, 5), math.random(2, 5))
-                particle.Position = UDim2.new(math.random() * 0.9 + 0.05, 0, math.random() * 0.9 + 0.05, 0)
+                local pSize = math.random(4, 9)
+                particle.Size = UDim2.fromOffset(pSize, pSize)
+                particle.Position = UDim2.new(math.random() * 0.9 + 0.05, 0, 1.1, 0)
                 particle.BackgroundColor3 = theme.AccentGlow
-                particle.BackgroundTransparency = math.random(5, 9) / 10
+                particle.BackgroundTransparency = math.random(5, 8) / 10
                 particle.BorderSizePixel = 0
                 particle.ZIndex = 201
                 particle.Parent = particleHolder
                 addCorner(particle, 10)
 
-                -- Float animation
+                -- Bubble rise animation
                 task.spawn(function()
                     while particle.Parent do
-                        local dur = math.random(20, 40) / 10
+                        local dur = math.random(25, 50) / 10
+                        local startX = math.random() * 0.9 + 0.05
+                        particle.Position = UDim2.new(startX, 0, 1.1, 0)
+                        
+                        -- Tween up with slight wobble
+                        local targetX = startX + (math.random(-5, 5) / 100)
                         tween(particle, {
-                            Position = UDim2.new(math.random() * 0.9 + 0.05, 0, math.random() * 0.9 + 0.05, 0),
-                            BackgroundTransparency = math.random(4, 9) / 10,
-                        }, dur, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+                            Position = UDim2.new(targetX, 0, -0.1, 0),
+                            BackgroundTransparency = math.random(6, 9) / 10,
+                        }, dur, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
                         task.wait(dur)
                     end
                 end)
             end
         end)
 
-        -- ── STAGE 1: "NOVA HUB" text fade in ──
+        -- ── STAGE 1: "OCEAN HUB" text fade in ──
         local splashText = Instance.new("TextLabel")
         splashText.Size = UDim2.new(0, 400, 0, 60)
         splashText.Position = UDim2.new(0.5, 0, 0.42, 0)
         splashText.AnchorPoint = Vector2.new(0.5, 0.5)
         splashText.BackgroundTransparency = 1
-        splashText.Text = "NOVA HUB"
+        splashText.Text = "OCEAN HUB"
         splashText.TextColor3 = theme.AccentGlow
         splashText.TextSize = 0
         splashText.TextTransparency = 1
@@ -216,7 +288,7 @@ function Nova:Create(config)
         textGlow.Position = UDim2.new(0.5, 0, 0.42, 0)
         textGlow.AnchorPoint = Vector2.new(0.5, 0.5)
         textGlow.BackgroundTransparency = 1
-        textGlow.Text = "NOVA HUB"
+        textGlow.Text = "OCEAN HUB"
         textGlow.TextColor3 = theme.Accent
         textGlow.TextSize = 0
         textGlow.TextTransparency = 1
@@ -236,7 +308,7 @@ function Nova:Create(config)
         subtitle.Position = UDim2.new(0.5, 0, 0.49, 0)
         subtitle.AnchorPoint = Vector2.new(0.5, 0.5)
         subtitle.BackgroundTransparency = 1
-        subtitle.Text = "✦  P R E M I U M   S C R I P T   H U B  ✦"
+        subtitle.Text = "✦  D E E P   S E A   H U B  ✦"
         subtitle.TextColor3 = theme.SubText
         subtitle.TextSize = 11
         subtitle.TextTransparency = 1
@@ -326,7 +398,7 @@ function Nova:Create(config)
             task.delay(0.8, function() ray:Destroy() end)
         end
 
-        -- "NOVA HUB" text inside rectangle
+        -- "OCEAN HUB" text inside rectangle
         local innerTitle = Instance.new("TextLabel")
         innerTitle.Size = UDim2.new(1, 0, 0, 30)
         innerTitle.Position = UDim2.new(0.5, 0, 0.62, 0)
@@ -446,7 +518,9 @@ function Nova:Create(config)
     tween(main, {Size = UDim2.new(0, size.X.Offset, 0, 3), BackgroundTransparency = 0}, 0.35, Enum.EasingStyle.Quint)
     task.wait(0.35)
     -- Step 2: Vertical expand
-    tween(main, {Size = size}, 0.45, Enum.EasingStyle.Back)
+    -- Step 2: Vertical expand with Spring React physics
+    springTween(main, "Size", "XOffset", size.X.Offset, 1, 10, 100)
+    springTween(main, "Size", "YOffset", size.Y.Offset, 1, 10, 100)
     task.wait(0.5)
 
     -- Title Bar
@@ -560,7 +634,7 @@ function Nova:Create(config)
     -- FLOATING MINI LOGO (shown when minimized)
     -- ═══════════════════════════════════════
     local miniLogo = Instance.new("ImageButton")
-    miniLogo.Name = "NovaMinLogo"
+    miniLogo.Name = "OceanMinLogo"
     miniLogo.Size = UDim2.fromOffset(50, 50)
     miniLogo.Position = UDim2.new(0, 20, 0.5, 0)
     miniLogo.AnchorPoint = Vector2.new(0, 0.5)
@@ -913,7 +987,7 @@ function Nova:Create(config)
             btn.MouseButton1Click:Connect(function()
                 state = not state
                 tween(toggleBg, {BackgroundColor3 = state and theme.Accent or theme.Border}, 0.25)
-                tween(knob, {Position = state and UDim2.new(1, -18, 0.5, 0) or UDim2.new(0, 2, 0.5, 0)}, 0.25, Enum.EasingStyle.Back)
+                springTween(knob, "Position", "XOffset", state and -18 or 2, 1, 10, 150)
                 if config.Callback then config.Callback(state) end
             end)
 
@@ -921,7 +995,7 @@ function Nova:Create(config)
                 Set = function(_, v) 
                     state = v
                     tween(toggleBg, {BackgroundColor3 = state and theme.Accent or theme.Border}, 0.2)
-                    tween(knob, {Position = state and UDim2.new(1, -18, 0.5, 0) or UDim2.new(0, 2, 0.5, 0)}, 0.2)
+                    springTween(knob, "Position", "XOffset", state and -18 or 2, 1, 10, 150)
                 end,
                 Get = function() return state end,
             }
@@ -1144,7 +1218,7 @@ function Nova:Create(config)
                         itemBtn.MouseButton1Click:Connect(function()
                             label.Text = itemName
                             isOpen = false
-                            tween(frame, {Size = UDim2.new(1, 0, 0, 36)}, 0.25, Enum.EasingStyle.Back)
+                            springTween(frame, "Size", "YOffset", 36, 1, 12, 130)
                             arrow.Text = "▼"
                             if config.Callback then config.Callback(item) end
                         end)
@@ -1157,7 +1231,7 @@ function Nova:Create(config)
             btn.MouseButton1Click:Connect(function()
                 isOpen = not isOpen
                 local targetH = isOpen and (36 + 4 + #items * 30) or 36
-                tween(frame, {Size = UDim2.new(1, 0, 0, targetH)}, 0.3, Enum.EasingStyle.Back)
+                springTween(frame, "Size", "YOffset", targetH, 1, 12, 130)
                 arrow.Text = isOpen and "▲" or "▼"
             end)
 
@@ -1177,7 +1251,7 @@ function Nova:Create(config)
                     -- Collapse dropdown after refresh
                     if isOpen then
                         isOpen = false
-                        tween(frame, {Size = UDim2.new(1, 0, 0, 36)}, 0.25)
+                        springTween(frame, "Size", "YOffset", 36, 1, 12, 130)
                         arrow.Text = "▼"
                     end
                 end,
@@ -1446,5 +1520,5 @@ function Nova:Create(config)
     return Window
 end
 
-print("✦ NovaLib UI Library loaded successfully!")
-return Nova
+print("✦ OceanLib UI Library loaded successfully!")
+return Ocean
