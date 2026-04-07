@@ -6388,7 +6388,7 @@ function Library:CreateWindow(WindowInfo)
                 ScaleType = Enum.ScaleType.Stretch,
                 ZIndex = 999,
                 BackgroundTransparency = 1,
-                ImageTransparency = 0.75,
+                ImageTransparency = 0.4,
                 Parent = MainFrame,
             })
 
