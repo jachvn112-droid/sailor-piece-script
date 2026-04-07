@@ -86,7 +86,7 @@ end
 -- [OCEAN HUB INJECTION START] --
 getgenv().nefasto_Running = true
 
-local NovaUrl = "https://raw.githubusercontent.com/jachvn112-droid/sailor-piece-script/b246c55/NovaLib.luau"
+local NovaUrl = "https://raw.githubusercontent.com/jachvn112-droid/sailor-piece-script/0ecd794/NovaLib.luau"
 
 -- Debug: Load with error handling
 local ok_http, NovaCode = pcall(function()
@@ -5015,6 +5015,77 @@ TB_Tabs.Autofarm.T1:AddToggle("LevelFarm", {
     Text = "Autofarm Level",
     Default = false,
 })
+
+TB_Tabs.Autofarm.T1:AddDivider()
+
+-- Auto Equip Tool
+local function GetBackpackTools()
+    local tools = {}
+    local char = Plr.Character
+    local bp = Plr:FindFirstChild("Backpack")
+    if bp then
+        for _, v in pairs(bp:GetChildren()) do
+            if v:IsA("Tool") then table.insert(tools, v.Name) end
+        end
+    end
+    if char then
+        for _, v in pairs(char:GetChildren()) do
+            if v:IsA("Tool") then table.insert(tools, v.Name) end
+        end
+    end
+    table.sort(tools)
+    return tools
+end
+
+TB_Tabs.Autofarm.T1:AddDropdown("SelectedEquipTool", {
+    Text = "Select Tool",
+    Values = GetBackpackTools(),
+    Default = nil,
+    Multi = false,
+    Searchable = true,
+    AllowNull = true,
+})
+
+TB_Tabs.Autofarm.T1:AddButton("Refresh Tools", function()
+    Options.SelectedEquipTool:SetValues(GetBackpackTools())
+    Options.SelectedEquipTool:SetValue(nil)
+end)
+
+TB_Tabs.Autofarm.T1:AddToggle("AutoEquipTool", {
+    Text = "Auto Equip Tool",
+    Default = false,
+})
+
+-- Auto Equip Logic
+task.spawn(function()
+    while task.wait(0.3) do
+        if Toggles.AutoEquipTool and Toggles.AutoEquipTool.Value then
+            local toolName = Options.SelectedEquipTool and Options.SelectedEquipTool.Value
+            if toolName and toolName ~= "" then
+                pcall(function()
+                    local char = Plr.Character
+                    if not char then return end
+                    
+                    -- Check nếu tool đã equip rồi thì skip
+                    local equipped = char:FindFirstChild(toolName)
+                    if equipped and equipped:IsA("Tool") then return end
+                    
+                    -- Tìm tool trong Backpack
+                    local bp = Plr:FindFirstChild("Backpack")
+                    if bp then
+                        local tool = bp:FindFirstChild(toolName)
+                        if tool and tool:IsA("Tool") then
+                            local hum = char:FindFirstChildOfClass("Humanoid")
+                            if hum then
+                                hum:EquipTool(tool)
+                            end
+                        end
+                    end
+                end)
+            end
+        end
+    end
+end)
 
 TB_Tabs.Autofarm.T2:AddDropdown("SelectedBosses", {
     Text = "Select Bosses",
