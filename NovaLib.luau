@@ -1,13 +1,13 @@
--- â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
--- â•‘              ðŸŒŠ OceanHub UI Library v1.0                          â•‘
--- â•‘     Premium Roblox Script UI Framework - Ocean Theme              â•‘
--- â•‘                                                                    â•‘
--- â•‘     Features, Toggles, Sliders, Dropdowns, ColorPickers,    â•‘
--- â•‘     KeyPickers, ThemeManager, SaveManager, Notifications,         â•‘
--- â•‘     Dialog System, Loading Screen, Search, DPI Scaling            â•‘
--- â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+-- ==================================================================================================================================================================================================================
+-- ===              ==== OceanHub UI Library v1.0                          ===
+-- ===     Premium Roblox Script UI Framework - Ocean Theme              ===
+-- ===                                                                    ===
+-- ===     Features, Toggles, Sliders, Dropdowns, ColorPickers,    ===
+-- ===     KeyPickers, ThemeManager, SaveManager, Notifications,         ===
+-- ===     Dialog System, Loading Screen, Search, DPI Scaling            ===
+-- ==================================================================================================================================================================================================================
 
--- â•â•â•â•â•â•â•â•â•â•â•â• CORE LIBRARY â•â•â•â•â•â•â•â•â•â•â•â•
+-- ==================================== CORE LIBRARY ====================================
 
 local cloneref = (cloneref or clonereference or function(instance)
     return instance
@@ -1041,19 +1041,6 @@ function IsValidCustomIcon(Icon)
         and (Icon:match("rbxasset") or Icon:match("roblox%.com/asset/%?id=") or Icon:match("rbxthumb://type="))
 end
 
-type Icon = {
-    Url,
-    Id,
-    IconName,
-    ImageRectOffset,
-    ImageRectSize,
-}
-
-type IconModule = {
-    Icons,
-    GetAsset: (Name) -> Icon?,
-}
-
 local FetchIcons, Icons = pcall(function()
     return (loadstring(
         game:HttpGet("https://raw.githubusercontent.com/deividcomsono/lucide-roblox-direct/refs/heads/main/source.lua")
@@ -1158,7 +1145,7 @@ local function New(ClassName, Properties)
 end
 
 --// Main Instances \\-
-local function SafeParentUI(Instance, Parent: Instance | () -> Instance)
+local function SafeParentUI(Instance, Parent: Instance | ()
     local success, _error = pcall(function()
         if not Parent then
             Parent = CoreGui
@@ -1357,7 +1344,7 @@ function Library:MouseIsOverFrame(Frame, Mouse)
         and Mouse.Y <= AbsPos.Y + AbsSize.Y
 end
 
-function Library:SafeCallback(Func: (...any) -> ...any, ...: any)
+function Library:SafeCallback(Func: (...any)
     if not (Func and typeof(Func) == "function") then
         return
     end
@@ -1427,7 +1414,7 @@ function Library:MakeDraggable(UI, DragFrame, IgnoreToggled, IsMainWindow)
     end))
 end
 
-function Library:MakeResizable(UI, DragFrame, Callback: () -> ()?)
+function Library:MakeResizable(UI, DragFrame, Callback: ()
     local StartPos
     local FrameSize
     local Dragging = false
@@ -1746,10 +1733,10 @@ end
 local CurrentMenu
 function Library:AddContextMenu(
     Holder,
-    Size: UDim2 | () -> (),
-    Offset | () -> {},
+    Size: UDim2 | ()
+    Offset | ()
     List,
-    ActiveCallback: (Active) -> ()?,
+    ActiveCallback: (Active)
     IgnoreCornerRadius)
     local Menu
     local ParentGui = Holder:FindFirstAncestorOfClass("ScreenGui")
@@ -2095,7 +2082,7 @@ function Library:SetIconModule(module)
     FetchIcons = true
     Icons = module
 
-    -- Top ten fixes ðŸš€
+    -- Top ten fixes ====
     CheckIcon = Library:GetIcon("check")
     ArrowIcon = Library:GetIcon("chevron-up")
     ResizeIcon = Library:GetIcon("move-diagonal-2")
@@ -6863,7 +6850,7 @@ function Library:CreateWindow(WindowInfo)
             Description = select(3, ...)
         end
 
-        local TabButton: TextButton
+        local TabButton
         local TabLabel
         local TabIcon
 
@@ -7721,7 +7708,7 @@ function Library:CreateWindow(WindowInfo)
 
         Icon = Icon or "key"
 
-        local TabButton: TextButton
+        local TabButton
         local TabLabel
         local TabIcon
 
@@ -9315,7 +9302,7 @@ Library:GiveSignal(Teams.ChildRemoved:Connect(OnTeamChange))
 
 -- getgenv().OceanLibrary = Library
 
--- â•â•â•â•â•â•â•â•â•â•â•â• THEME MANAGER â•â•â•â•â•â•â•â•â•â•â•â•
+-- ==================================== THEME MANAGER ====================================
 
 local ThemeManager = {}
 do
@@ -9796,7 +9783,7 @@ end
 
 -- OceanHub ThemeManager loaded
 
--- â•â•â•â•â•â•â•â•â•â•â•â• SAVE MANAGER â•â•â•â•â•â•â•â•â•â•â•â•
+-- ==================================== SAVE MANAGER ====================================
 
 local SaveManager = {} do
     SaveManager.Folder = "OceanHubSettings"
@@ -10267,10 +10254,9 @@ local SaveManager = {} do
     SaveManager:BuildFolderTree()
 end
 
-
--- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+-- =========================================================================================================================================================
 -- Return all modules
--- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+-- =========================================================================================================================================================
 getgenv().OceanLibrary = Library
 
 return {
@@ -10278,5 +10264,4 @@ return {
     ThemeManager = ThemeManager,
     SaveManager = SaveManager,
 }
-
 
