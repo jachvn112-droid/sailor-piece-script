@@ -212,7 +212,15 @@ function Ocean:Create(config)
     gui.ResetOnSpawn = false
     gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     gui.IgnoreGuiInset = true
-    gui.Parent = Player.PlayerGui
+    
+    -- Try to protect gui from detection and deletion
+    local get_hui
+    local success, result = pcall(function() return gethui() end)
+    if success and result then get_hui = result else
+        success, result = pcall(function() return game:GetService("CoreGui") end)
+        if success and result then get_hui = result else get_hui = Player.PlayerGui end
+    end
+    gui.Parent = get_hui
 
     -- ════════════════════════════════════════════
     -- SPLASH SCREEN - CINEMATIC INTRO
@@ -1519,5 +1527,176 @@ function Ocean:Create(config)
     return Window
 end
 
+-- ════════════════════════════════════════════════════════
+-- LINORIA/NOVALIB COMPATIBILITY MOCK LAYER
+-- ════════════════════════════════════════════════════════
+local Library = {}
+local Options = {}
+local Toggles = {}
+
+Library.Options = Options
+Library.Toggles = Toggles
+Library.ForceCheckbox = true
+Library.ShowToggleFrameInKeybinds = true
+Library.KeybindFrame = { Visible = false }
+Library.ShowCustomCursor = false
+
+local OceanGuiInstance = nil
+
+function Library:Notify(text, duration)
+    if OceanGuiInstance then
+        OceanGuiInstance:Notify({ Title = "Notification", Text = tostring(text), Duration = duration or 4 })
+    end
+end
+
+function Library:SetWatermark() end
+function Library:SetDPIScale() end
+function Library:Unload() end
+function Library:Toggle() end
+
+local MenuGroup = {}
+function MenuGroup:AddToggle(...) 
+    local t = {}
+    function t:OnChanged() end
+    return t
+end
+function MenuGroup:AddButton(...) end
+
+function Library:CreateWindow(cfg)
+    OceanGuiInstance = Ocean:Create({
+        Name = cfg.Title or "Ocean Hub",
+        Theme = Ocean.Themes.DeepSea, 
+        Size = UDim2.fromOffset(620, 420),
+    })
+    
+    local WindowUI = {}
+    
+    function WindowUI:AddTab(name)
+        local NTab = OceanGuiInstance:Tab({ Name = name })
+        
+        local mockTab = {}
+        function mockTab:AddLeftGroupbox(gbName)     NTab:Section(gbName); return mockTab end
+        function mockTab:AddRightGroupbox(gbName)    NTab:Section(gbName); return mockTab end
+        function mockTab:AddTabbox()                 return mockTab end
+        function mockTab:AddLeftTabbox()             return mockTab end
+        function mockTab:AddRightTabbox()            return mockTab end
+        function mockTab:AddTab()                    return mockTab end
+        function mockTab:AddDivider()                return mockTab end
+        function mockTab:UpdateWarningBox(cfg)       return mockTab end
+        function mockTab:AddLabel(text) 
+            local lw = {}
+            function lw:SetText(t) end
+            return lw
+        end
+        
+        function mockTab:AddToggle(id, tgCfg)
+            Toggles[id] = { Value = tgCfg.Default or false }
+            Toggles[id].OnChanged = function(self, cb) self.Callback = cb end
+            Toggles[id].SetValue = function(self, val) self.Value = val end
+            Toggles[id].AddTooltip = function(self, txt) return self end
+            Toggles[id].KeyPicker = { Value = "None" } 
+            
+            local toggleRef = NTab:Toggle({
+                Name = tgCfg.Text or id,
+                Default = tgCfg.Default or false,
+                Callback = function(val)
+                    Toggles[id].Value = val
+                    if Toggles[id].Callback then Toggles[id].Callback(val) end
+                end
+            })
+            
+            Toggles[id].AddKeyPicker = function(self, ...) 
+                local kp = { Value = "None" }
+                self.KeyPicker = kp
+                return self
+            end
+            return Toggles[id]
+        end
+        
+        function mockTab:AddSlider(id, sliderCfg)
+            Options[id] = { Value = sliderCfg.Default or sliderCfg.Min or 0 }
+            Options[id].OnChanged = function(self, cb) self.Callback = cb end
+            Options[id].SetValue = function(self, val) self.Value = val end
+            Options[id].AddTooltip = function(self, txt) return self end
+            
+            NTab:Slider({
+                Name = sliderCfg.Text or id,
+                Min = sliderCfg.Min or 0,
+                Max = sliderCfg.Max or 100,
+                Default = sliderCfg.Default or sliderCfg.Min or 0,
+                Callback = function(val)
+                    Options[id].Value = val
+                    if Options[id].Callback then Options[id].Callback(val) end
+                end
+            })
+            return Options[id]
+        end
+        
+        function mockTab:AddDropdown(id, ddCfg)
+            Options[id] = { Value = ddCfg.Default }
+            Options[id].OnChanged = function(self, cb) self.Callback = cb end
+            Options[id].SetValue = function(self, val) self.Value = val end
+            Options[id].SetValues = function(self, vals) end 
+            Options[id].AddTooltip = function(self, txt) return self end
+            
+            local function fixValues(vals)
+                local res = {}
+                if type(vals) == "table" then
+                    for k,v in pairs(vals) do table.insert(res, tostring(v)) end
+                end
+                return res
+            end
+            NTab:Dropdown({
+                Name = ddCfg.Text or id,
+                Items = fixValues(ddCfg.Values or {}),
+                Callback = function(val)
+                    Options[id].Value = val
+                    if Options[id].Callback then Options[id].Callback(val) end
+                end
+            })
+            return Options[id]
+        end
+        
+        function mockTab:AddButton(param1, param2)
+            local btn = {}
+            function btn:AddTooltip(txt) return btn end
+            if type(param1) == "table" then
+                NTab:Button({ Name = param1.Text or "Execute", Callback = param1.Func or param1.Callback or function() end })
+            else
+                NTab:Button({ Name = param1, Callback = param2 or function() end })
+            end
+            return btn
+        end
+        
+        function mockTab:AddInput(id, inpCfg)
+            Options[id] = { Value = inpCfg.Default or "" }
+            Options[id].OnChanged = function(self, cb) self.Callback = cb end
+            Options[id].SetValue = function(self, val) self.Value = val end
+            Options[id].AddTooltip = function(self, txt) return self end
+            
+            NTab:Textbox({
+                Name = inpCfg.Text or id,
+                Placeholder = "...",
+                Callback = function(txt)
+                    Options[id].Value = txt
+                    if Options[id].Callback then Options[id].Callback(txt) end
+                end
+            })
+            return Options[id]
+        end
+        
+        return mockTab
+    end
+    return WindowUI
+end
+
+local ThemeManager = setmetatable({}, { __index = function() return function() end end })
+local SaveManager = setmetatable({}, { __index = function() return function() end end })
+
+local getgenv = getgenv or function() return _G end
+getgenv().ThemeManager = ThemeManager
+getgenv().SaveManager = SaveManager
+getgenv().Library = Library
+
 print("✦ OceanLib UI Library loaded successfully!")
-return Ocean
+return Library
