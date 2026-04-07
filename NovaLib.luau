@@ -527,11 +527,9 @@ function Ocean:Create(config)
     -- Step 1: Horizontal line expand
     tween(main, {Size = UDim2.new(0, size.X.Offset, 0, 3), BackgroundTransparency = 0}, 0.35, Enum.EasingStyle.Quint)
     task.wait(0.35)
-    -- Step 2: Vertical expand
-    -- Step 2: Vertical expand with Spring React physics
-    springTween(main, "Size", "XOffset", size.X.Offset, 1, 10, 100)
-    springTween(main, "Size", "YOffset", size.Y.Offset, 1, 10, 100)
-    task.wait(0.5)
+    -- Step 2: Vertical expand with smooth tween
+    tween(main, {Size = size}, 0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+    task.wait(0.45)
 
     -- Title Bar
     local titleBar = Instance.new("Frame")
@@ -997,7 +995,7 @@ function Ocean:Create(config)
             btn.MouseButton1Click:Connect(function()
                 state = not state
                 tween(toggleBg, {BackgroundColor3 = state and theme.Accent or theme.Border}, 0.25)
-                springTween(knob, "Position", "XOffset", state and -18 or 2, 1, 10, 150)
+                tween(knob, {Position = UDim2.new(1, state and -18 or 2, 0, 2)}, 0.2, Enum.EasingStyle.Back)
                 if config.Callback then config.Callback(state) end
             end)
 
@@ -1005,7 +1003,7 @@ function Ocean:Create(config)
                 Set = function(_, v) 
                     state = v
                     tween(toggleBg, {BackgroundColor3 = state and theme.Accent or theme.Border}, 0.2)
-                    springTween(knob, "Position", "XOffset", state and -18 or 2, 1, 10, 150)
+                    tween(knob, {Position = UDim2.new(1, state and -18 or 2, 0, 2)}, 0.2, Enum.EasingStyle.Back)
                 end,
                 Get = function() return state end,
             }
@@ -1231,7 +1229,7 @@ function Ocean:Create(config)
                         itemBtn.MouseButton1Click:Connect(function()
                             label.Text = itemName
                             isOpen = false
-                            springTween(frame, "Size", "YOffset", 36, 1, 12, 130)
+                            tween(frame, {Size = UDim2.new(1, 0, 0, 36)}, 0.25, Enum.EasingStyle.Back)
                             arrow.Text = "▼"
                             if config.Callback then config.Callback(item) end
                         end)
@@ -1244,7 +1242,7 @@ function Ocean:Create(config)
             btn.MouseButton1Click:Connect(function()
                 isOpen = not isOpen
                 local targetH = isOpen and (36 + 4 + #items * 30) or 36
-                springTween(frame, "Size", "YOffset", targetH, 1, 12, 130)
+                tween(frame, {Size = UDim2.new(1, 0, 0, targetH)}, 0.25, Enum.EasingStyle.Back)
                 arrow.Text = isOpen and "▲" or "▼"
             end)
 
@@ -1264,7 +1262,7 @@ function Ocean:Create(config)
                     -- Collapse dropdown after refresh
                     if isOpen then
                         isOpen = false
-                        springTween(frame, "Size", "YOffset", 36, 1, 12, 130)
+                        tween(frame, {Size = UDim2.new(1, 0, 0, 36)}, 0.25, Enum.EasingStyle.Back)
                         arrow.Text = "▼"
                     end
                 end,
