@@ -1,21 +1,17 @@
--- ==================================================================
--- OceanHub UI Library v1.0
--- Premium Roblox Script UI Framework - Ocean Theme
--- ==================================================================
-
--- ============ CORE LIBRARY ============
+-- OceanHub UI Library v1.0 - Ocean Theme
+-- All-in-one: Library + ThemeManager + SaveManager
 
 local cloneref = (cloneref or clonereference or function(instance)
     return instance
 end)
-local CoreGui = cloneref(game:GetService("CoreGui"))
-local Players = cloneref(game:GetService("Players"))
-local RunService = cloneref(game:GetService("RunService"))
-local SoundService = cloneref(game:GetService("SoundService"))
-local UserInputService = cloneref(game:GetService("UserInputService"))
-local TextService = cloneref(game:GetService("TextService"))
-local Teams = cloneref(game:GetService("Teams"))
-local TweenService = cloneref(game:GetService("TweenService"))
+local CoreGui= cloneref(game:GetService("CoreGui"))
+local Players= cloneref(game:GetService("Players"))
+local RunService= cloneref(game:GetService("RunService"))
+local SoundService= cloneref(game:GetService("SoundService"))
+local UserInputService= cloneref(game:GetService("UserInputService"))
+local TextService= cloneref(game:GetService("TextService"))
+local Teams= cloneref(game:GetService("Teams"))
+local TweenService= cloneref(game:GetService("TweenService"))
 
 local getgenv = getgenv or function()
     return shared
@@ -151,7 +147,7 @@ do
         end
 
         local success, errorMessage = pcall(function()
-            writefile(AssetData.Path, game))
+            writefile(AssetData.Path, game:HttpGet(AssetData.URL))
         end)
 
         return success, errorMessage
@@ -1034,23 +1030,10 @@ function IsValidCustomIcon(Icon)
         and (Icon:match("rbxasset") or Icon:match("roblox%.com/asset/%?id=") or Icon:match("rbxthumb://type="))
 end
 
--- (type stripped) type Icon = {
-    Url: string,
-    Id: number,
-    IconName: string,
-    ImageRectOffset: Vector2,
-    ImageRectSize: Vector2,
-}
-
--- (type stripped) type IconModule = {
-    Icons: { string },
-    GetAsset: (Name: string)
-}
-
 local FetchIcons, Icons = pcall(function()
     return (loadstring(
         game:HttpGet("https://raw.githubusercontent.com/deividcomsono/lucide-roblox-direct/refs/heads/main/source.lua")
-    ) :: ()
+    ))()
 end)
 
 function Library:GetIcon(IconName)
@@ -1151,7 +1134,7 @@ local function New(ClassName, Properties): any
 end
 
 --// Main Instances \\-
-local function SafeParentUI(Instance, Parent) -> Instance)
+local function SafeParentUI(Instance, Parent)
     local success, _error = pcall(function()
         if not Parent then
             Parent = CoreGui
@@ -1420,7 +1403,7 @@ function Library:MakeDraggable(UI, DragFrame, IgnoreToggled, IsMainWindow)
     end))
 end
 
-function Library:MakeResizable(UI, DragFrame, Callback) -> ()?)
+function Library:MakeResizable(UI, DragFrame, Callback)
     local StartPos
     local FrameSize
     local Dragging = false
@@ -1528,7 +1511,7 @@ end
 
 --// Deprecated \\--
 function Library:MakeOutline(Frame, Corner, ZIndex)
-    warn("OceanHub:MakeOutline is deprecated, please use OceanHub:AddOutline instead.")
+    warn("OceanHub:MakeOutline is deprecated, please use Obsidian:AddOutline instead.")
     local Holder = New("Frame", {
         BackgroundColor3 = "DarkColor",
         Position = UDim2.fromOffset(-2, -2),
@@ -1738,7 +1721,12 @@ end
 --// Context Menu \\--
 local CurrentMenu
 function Library:AddContextMenu(
-    Holder, Size, Offset, List, ActiveCallback, IgnoreCornerRadius)
+    Holder, Size)
+    Offset: { [number]: number } | ()
+    List: number?,
+    ActiveCallback: (Active: boolean)
+    IgnoreCornerRadius: boolean?
+)
     local Menu
     local ParentGui = Holder:FindFirstAncestorOfClass("ScreenGui")
     if ParentGui ~= ScreenGui and (Library.ActiveLoading and ParentGui ~= Library.ActiveLoading.ScreenGui) then
@@ -5172,7 +5160,7 @@ do
                 return model.Size
             end
 
-            return select(2, model))
+            return select(2, model:GetBoundingBox())
         end
 
         local function FocusCamera()
@@ -6290,7 +6278,7 @@ end
 
 function Library:CreateWindow(WindowInfo)
     WindowInfo = Library:Validate(WindowInfo, Templates.Window)
-    local ViewportSize = workspace.CurrentCamera.ViewportSize
+    local ViewportSize= workspace.CurrentCamera.ViewportSize
     if RunService:IsStudio() and ViewportSize.X <= 5 and ViewportSize.Y <= 5 then
         repeat
             ViewportSize = workspace.CurrentCamera.ViewportSize
@@ -9303,8 +9291,6 @@ Library:GiveSignal(Teams.ChildRemoved:Connect(OnTeamChange))
 
 -- getgenv().OceanLibrary = Library
 
--- ============ THEME MANAGER ============
-
 local ThemeManager = {}
 do
     local ThemeFields = { "FontColor", "MainColor", "AccentColor", "BackgroundColor", "OutlineColor" }
@@ -9581,7 +9567,7 @@ do
         end
         theme["FontFace"] = self.Library.Options["FontFace"].Value
 
-        writefile(self.Folder .. "/themes/" .. file .. ".json", HttpService))
+        writefile(self.Folder .. "/themes/" .. file .. ".json", HttpService:JSONEncode(theme))
     end
 
     function ThemeManager:Delete(name)
@@ -9621,7 +9607,7 @@ do
                 end
 
                 if char == "/" or char == "\\" then
-                    table.insert(out, file, start - 1))
+                    table.insert(out, file:sub(pos + 1, start - 1))
                 end
             end
         end
@@ -9782,9 +9768,7 @@ do
     ThemeManager:BuildFolderTree()
 end
 
--- OceanHub ThemeManager loaded
-
--- ============ SAVE MANAGER ============
+-- OceanHub ThemeManager
 
 local SaveManager = {} do
     SaveManager.Folder = "OceanHubSettings"
@@ -10056,7 +10040,7 @@ local SaveManager = {} do
                     end
 
                     if char == "/" or char == "\\" then
-                        table.insert(out, file, start - 1))
+                        table.insert(out, file:sub(pos + 1, start - 1))
                     end
                 end
             end
@@ -10255,11 +10239,8 @@ local SaveManager = {} do
     SaveManager:BuildFolderTree()
 end
 
--- ==================================================================
 -- Return all modules
--- ==================================================================
 getgenv().OceanLibrary = Library
-
 return {
     Library = Library,
     ThemeManager = ThemeManager,
