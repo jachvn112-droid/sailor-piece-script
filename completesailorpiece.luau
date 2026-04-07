@@ -86,7 +86,7 @@ end
 -- [OCEAN HUB INJECTION START] --
 getgenv().nefasto_Running = true
 
-local NovaUrl = "https://raw.githubusercontent.com/jachvn112-droid/sailor-piece-script/32f3fcb/NovaLib.luau"
+local NovaUrl = "https://raw.githubusercontent.com/jachvn112-droid/sailor-piece-script/aca1dd1/NovaLib.luau"
 
 -- Debug: Load with error handling
 local ok_http, NovaCode = pcall(function()
@@ -3091,16 +3091,24 @@ local function GetAllMobTarget()
     end
 end
 
-local function GetMobTPTarget()
-    if not Toggles.MobTPFarm.Value then return nil end
-    local selectedMobTP = Options.SelectedMobTP.Value
-    if not selectedMobTP then return nil end
+local function GetMobFarmTPTarget()
+    if not Toggles.MobFarmTP.Value then return nil end
 
+    local selectedDict = Options.SelectedMob.Value or {}
+    local enabledMobs = {}
+    for mob, enabled in pairs(selectedDict) do
+        if enabled then table.insert(enabledMobs, mob) end
+    end
+    if #enabledMobs == 0 then return nil end
+
+    local targetMobName = enabledMobs[1]
+
+    -- Tìm mob trong workspace
     local target = nil
     for _, npc in pairs(PATH.Mobs:GetChildren()) do
         if npc:IsA("Model") then
             local cleanName = npc.Name:gsub("%d+$", "")
-            if cleanName == selectedMobTP and IsValidTarget(npc) then
+            if cleanName == targetMobName and IsValidTarget(npc) then
                 target = npc
                 break
             end
@@ -3109,8 +3117,15 @@ local function GetMobTPTarget()
 
     if target then
         return target, nil, "Mob"
+    else
+        -- Mob không thấy → remote TP đến đảo mob đó
+        local island = Tables.MobIslandMap[targetMobName] or Tables.MobToIsland[targetMobName]
+        if island then
+            Remotes.TP_Portal:FireServer(island)
+            task.wait(1.5)
+        end
+        return nil
     end
-    return nil
 end
 
 local function GetLevelFarmTarget()
@@ -3333,7 +3348,7 @@ local function CheckTask(taskType)
     elseif taskType == "Mob" then
         return GetMobTarget()
     elseif taskType == "Mob TP" then
-        return GetMobTPTarget()
+        return GetMobFarmTPTarget()
     elseif taskType == "Alt Help" then
         return GetAltHelpTarget()
     end
@@ -3408,7 +3423,7 @@ local function ExecuteFarmLogic(target, island, farmType)
     end
 
     if Toggles.IslandTP.Value then
-        local skipIslandTP = (Options.AllMobType and Options.AllMobType.Value == "Teleport") or (Toggles.MobTPFarm and Toggles.MobTPFarm.Value)
+        local skipIslandTP = (Toggles.MobFarmTP and Toggles.MobFarmTP.Value)
         if not skipIslandTP and island and island ~= "" and island ~= "Unknown" and island ~= Shared.Island then
             Shared.MovingIsland = true
             Remotes.TP_Portal:FireServer(island)
@@ -3449,8 +3464,8 @@ local function ExecuteFarmLogic(target, island, farmType)
     local finalDestination = CFrame.lookAt(finalPos, targetPos)
 
     if (root.Position - finalPos).Magnitude > 0.1 then
-        local isFastOrTP = (Options.AllMobType and (Options.AllMobType.Value == "Fast" or Options.AllMobType.Value == "Teleport"))
-            or (Toggles.MobTPFarm and Toggles.MobTPFarm.Value)
+        local isFastOrTP = (Options.AllMobType and Options.AllMobType.Value == "Fast")
+            or (Toggles.MobFarmTP and Toggles.MobFarmTP.Value)
         if Options.SelectedMovementType.Value == "Teleport" or isFastOrTP then
             root.CFrame = finalDestination
             root.AssemblyLinearVelocity = Vector3.new(0, 0.01, 0)
@@ -4802,6 +4817,14 @@ TB_Tabs.Autofarm.T1:AddToggle("MobFarm", {
     Default = false,
 })
 
+TB_Tabs.Autofarm.T1:AddToggle("MobFarmTP", {
+    Text = "Auto Farm Selected Mob Teleport",
+    Default = false,
+    Callback = function(val)
+        if val then StartDashBypass() else StopDashBypass() end
+    end,
+})
+
 TB_Tabs.Autofarm.T1:AddToggle("AllMobFarm", {
     Text = "Autofarm All Mobs",
     Default = false,
@@ -4809,31 +4832,9 @@ TB_Tabs.Autofarm.T1:AddToggle("AllMobFarm", {
 
 TB_Tabs.Autofarm.T1:AddDropdown("AllMobType", {
     Text = "Select Type [All Mob]",
-    Values = {"Normal", "Fast", "Teleport"},
+    Values = {"Normal", "Fast"},
     Default = "Normal",
     Multi = false,
-    Searchable = true,
-    Callback = function(val)
-        if val == "Teleport" then StartDashBypass() else StopDashBypass() end
-    end,
-})
-
-TB_Tabs.Autofarm.T1:AddDivider()
-
-TB_Tabs.Autofarm.T1:AddToggle("MobTPFarm", {
-    Text = "Auto Farm Mob Teleport",
-    Default = false,
-    Callback = function(val)
-        if val then StartDashBypass() else StopDashBypass() end
-    end,
-})
-
-TB_Tabs.Autofarm.T1:AddDropdown("SelectedMobTP", {
-    Text = "Select Mob (TP Farm)",
-    Values = Tables.MobList,
-    Default = nil,
-    Multi = false,
-    AllowNull = true,
     Searchable = true,
 })
 
