@@ -86,7 +86,7 @@ end
 -- [OCEAN HUB INJECTION START] --
 getgenv().nefasto_Running = true
 
-local NovaUrl = "https://raw.githubusercontent.com/jachvn112-droid/sailor-piece-script/de56a31/NovaLib.luau"
+local NovaUrl = "https://raw.githubusercontent.com/jachvn112-droid/sailor-piece-script/aad9455/NovaLib.luau"
 
 -- Debug: Load with error handling
 local ok_http, NovaCode = pcall(function()
@@ -3472,9 +3472,11 @@ local function ExecuteFarmLogic(target, island, farmType)
     end
 
     if Toggles.IslandTP.Value then
-        local skipIslandTP = (Toggles.MobFarmTP and Toggles.MobFarmTP.Value)
+        local skipIslandTP = (Options.AllMobType and Options.AllMobType.Value == "Teleport") or (Toggles.MobFarmTP and Toggles.MobFarmTP.Value)
         if not skipIslandTP and island and island ~= "" and island ~= "Unknown" and island ~= Shared.Island then
             Shared.MovingIsland = true
+            -- Preload island map data
+            pcall(function() Plr:RequestStreamAroundAsync(root.Position, 5) end)
             Remotes.TP_Portal:FireServer(island)
             task.wait(tonumber(Options.IslandTPCD.Value) or 0.8)
             Shared.Island = island
@@ -3513,7 +3515,12 @@ local function ExecuteFarmLogic(target, island, farmType)
     local finalDestination = CFrame.lookAt(finalPos, targetPos)
 
     if (root.Position - finalPos).Magnitude > 0.1 then
-        local isFastOrTP = (Options.AllMobType and Options.AllMobType.Value == "Fast")
+        -- Force-load map around target (bypass render distance)
+        pcall(function()
+            Plr:RequestStreamAroundAsync(finalPos, 5)
+        end)
+
+        local isFastOrTP = (Options.AllMobType and (Options.AllMobType.Value == "Fast" or Options.AllMobType.Value == "Teleport"))
             or (Toggles.MobFarmTP and Toggles.MobFarmTP.Value)
         if Options.SelectedMovementType.Value == "Teleport" or isFastOrTP then
             root.CFrame = finalDestination
@@ -4881,10 +4888,13 @@ TB_Tabs.Autofarm.T1:AddToggle("AllMobFarm", {
 
 TB_Tabs.Autofarm.T1:AddDropdown("AllMobType", {
     Text = "Select Type [All Mob]",
-    Values = {"Normal", "Fast"},
+    Values = {"Normal", "Fast", "Teleport"},
     Default = "Normal",
     Multi = false,
     Searchable = true,
+    Callback = function(val)
+        if val == "Teleport" then StartDashBypass() else StopDashBypass() end
+    end,
 })
 
 TB_Tabs.Autofarm.T1:AddToggle("LevelFarm", {
