@@ -86,7 +86,7 @@ end
 -- [OCEAN HUB INJECTION START] --
 getgenv().nefasto_Running = true
 
-local NovaUrl = "https://raw.githubusercontent.com/jachvn112-droid/sailor-piece-script/aca1dd1/NovaLib.luau"
+local NovaUrl = "https://raw.githubusercontent.com/jachvn112-droid/sailor-piece-script/de56a31/NovaLib.luau"
 
 -- Debug: Load with error handling
 local ok_http, NovaCode = pcall(function()
@@ -3392,19 +3392,68 @@ local function Func_KillAura()
             continue 
         end
 
-        local target = GetNearestAuraTarget()
-        
-        if target then
-            EquipWeapon()
-            
-            local targetPos = target:GetPivot().Position
-            
-            pcall(function()
-                Remotes.M1:FireServer(targetPos)
-            end)
+        local char = Plr.Character
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        if not root then task.wait(0.1) continue end
+
+        local maxRange = tonumber(Options.KillAuraRange.Value) or 200
+        local mobFolder = workspace:FindFirstChild("NPCs")
+        if not mobFolder then task.wait(0.1) continue end
+
+        EquipWeapon()
+
+        -- Hit ALL mobs in range simultaneously
+        for _, mob in pairs(mobFolder:GetChildren()) do
+            local hum = mob:FindFirstChildOfClass("Humanoid")
+            if not (hum and hum.Health > 0) then continue end
+            local pos = mob:GetPivot().Position
+            if (root.Position - pos).Magnitude <= maxRange then
+                task.spawn(function()
+                    pcall(function()
+                        Remotes.M1:FireServer(pos)
+                    end)
+                end)
+            end
         end
         
         task.wait(tonumber(Options.KillAuraCD.Value) or 0.12)
+    end
+end
+
+-- Auto-hit all mobs in range when any farm is active
+local function Func_FarmAutoHit()
+    local RANGE = 50
+    while getgenv().nefasto_Running do
+        task.wait(0.1)
+
+        local isFarming = Shared.Farm and (
+            (Toggles.MobFarm and Toggles.MobFarm.Value) or
+            (Toggles.MobFarmTP and Toggles.MobFarmTP.Value) or
+            (Toggles.AllMobFarm and Toggles.AllMobFarm.Value) or
+            (Toggles.LevelFarm and Toggles.LevelFarm.Value)
+        )
+        if not isFarming then continue end
+
+        local char = Plr.Character
+        if not char then continue end
+        local root = char:FindFirstChild("HumanoidRootPart")
+        if not root then continue end
+
+        local mobFolder = workspace:FindFirstChild("NPCs")
+        if not mobFolder then continue end
+
+        for _, mob in pairs(mobFolder:GetChildren()) do
+            local hum = mob:FindFirstChildOfClass("Humanoid")
+            if not (hum and hum.Health > 0) then continue end
+            local pos = mob:GetPivot().Position
+            if (root.Position - pos).Magnitude <= RANGE then
+                task.spawn(function()
+                    pcall(function()
+                        Remotes.M1:FireServer(pos)
+                    end)
+                end)
+            end
+        end
     end
 end
 
@@ -6810,6 +6859,9 @@ end)
 
 Library:Notify("Script loaded.", 2)
 Library:Notify("Report bug and give suggestion in Discord!", 5)
+
+-- Auto-hit all mobs in range when farming
+task.spawn(Func_FarmAutoHit)
 
 end)
 
