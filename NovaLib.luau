@@ -1698,5 +1698,15 @@ getgenv().ThemeManager = ThemeManager
 getgenv().SaveManager = SaveManager
 getgenv().Library = Library
 
+-- Merge Library into Ocean for backwards compatibility with old wrapper code
+for k, v in pairs(Library) do
+    if type(v) == "function" then
+        Ocean[k] = function(self, ...) return v(Library, ...) end
+    else
+        Ocean[k] = v
+    end
+end
+Ocean.Library = Library
+
 print("✦ OceanLib UI Library loaded successfully!")
-return Library
+return Ocean
