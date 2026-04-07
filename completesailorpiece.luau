@@ -86,7 +86,7 @@ end
 -- [OCEAN HUB INJECTION START] --
 getgenv().nefasto_Running = true
 
-local NovaUrl = "https://raw.githubusercontent.com/jachvn112-droid/sailor-piece-script/aad9455/NovaLib.luau"
+local NovaUrl = "https://raw.githubusercontent.com/jachvn112-droid/sailor-piece-script/27d43ea/NovaLib.luau"
 
 -- Debug: Load with error handling
 local ok_http, NovaCode = pcall(function()
@@ -3457,6 +3457,84 @@ local function Func_FarmAutoHit()
     end
 end
 
+
+-- Nuke Map: xoa het map chi giu mob + player
+local nukeMapDone = false
+local function IsProtectedModel(obj)
+    for _, plr in pairs(Players:GetPlayers()) do
+        if plr.Character and (obj == plr.Character or obj:IsDescendantOf(plr.Character)) then
+            return true
+        end
+    end
+    if obj:IsA("Model") then
+        if obj:FindFirstChildOfClass("Humanoid") or obj:FindFirstChild("HumanoidRootPart") then return true end
+    end
+    local p = obj.Parent
+    while p and p ~= workspace do
+        if p:IsA("Model") and (p:FindFirstChildOfClass("Humanoid") or p:FindFirstChild("HumanoidRootPart")) then return true end
+        p = p.Parent
+    end
+    return false
+end
+
+local KEEP_FOLDERS = {["NPCs"]=true, ["ServiceNPCs"]=true, ["Camera"]=true, ["Terrain"]=true}
+
+local function Func_NukeMap()
+    if nukeMapDone then return end
+    nukeMapDone = true
+    Library:Notify("Nuking map... please wait", 3)
+    pcall(function()
+        Lighting.GlobalShadows = false
+        Lighting.FogEnd = 9e9
+        Lighting.Brightness = 1
+        for _, v in pairs(Lighting:GetChildren()) do pcall(function() v:Destroy() end) end
+    end)
+    local removed = 0
+    for _, child in pairs(workspace:GetChildren()) do
+        pcall(function()
+            if KEEP_FOLDERS[child.Name] then return end
+            if child:IsA("Camera") or child:IsA("Terrain") then return end
+            if IsProtectedModel(child) then return end
+            if child:IsA("Folder") or child:IsA("Model") then
+                local hasMob = false
+                for _, d in pairs(child:GetDescendants()) do
+                    if d:IsA("Model") and (d:FindFirstChildOfClass("Humanoid") or d:FindFirstChild("HumanoidRootPart")) then
+                        hasMob = true; break
+                    end
+                end
+                if hasMob then
+                    for _, d in pairs(child:GetDescendants()) do
+                        pcall(function()
+                            if IsProtectedModel(d) then return end
+                            if d:IsA("Decal") or d:IsA("Texture") or d:IsA("ParticleEmitter") or d:IsA("Trail") or d:IsA("Beam") or d:IsA("Fire") or d:IsA("Smoke") or d:IsA("Sound") then
+                                d:Destroy(); removed += 1
+                            elseif d:IsA("BasePart") and not IsProtectedModel(d) then
+                                d.Transparency = 1; d.CanCollide = false; removed += 1
+                            end
+                        end)
+                    end
+                else
+                    child:Destroy(); removed += 1
+                end
+            else
+                child:Destroy(); removed += 1
+            end
+        end)
+    end
+    workspace.DescendantAdded:Connect(function(v)
+        task.defer(function()
+            pcall(function()
+                if IsProtectedModel(v) then return end
+                if v:IsA("Decal") or v:IsA("Texture") or v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Beam") or v:IsA("Fire") or v:IsA("Smoke") or v:IsA("Sound") then
+                    v:Destroy()
+                elseif v:IsA("BasePart") and not IsProtectedModel(v) then
+                    v.Transparency = 1; v.CanCollide = false
+                end
+            end)
+        end)
+    end)
+    Library:Notify("Map nuked! Removed " .. removed .. " objects", 5)
+end
 local function ExecuteFarmLogic(target, island, farmType)
     local char = GetCharacter()
     local root = char and char:FindFirstChild("HumanoidRootPart")
@@ -3475,8 +3553,8 @@ local function ExecuteFarmLogic(target, island, farmType)
         local skipIslandTP = (Options.AllMobType and Options.AllMobType.Value == "Teleport") or (Toggles.MobFarmTP and Toggles.MobFarmTP.Value)
         if not skipIslandTP and island and island ~= "" and island ~= "Unknown" and island ~= Shared.Island then
             Shared.MovingIsland = true
-            -- Preload island map data
-            pcall(function() Plr:RequestStreamAroundAsync(root.Position, 5) end)
+            -- Preload island map data (non-blocking)
+            task.spawn(function() pcall(function() Plr:RequestStreamAroundAsync(root.Position, 1) end) end)
             Remotes.TP_Portal:FireServer(island)
             task.wait(tonumber(Options.IslandTPCD.Value) or 0.8)
             Shared.Island = island
@@ -3515,9 +3593,9 @@ local function ExecuteFarmLogic(target, island, farmType)
     local finalDestination = CFrame.lookAt(finalPos, targetPos)
 
     if (root.Position - finalPos).Magnitude > 0.1 then
-        -- Force-load map around target (bypass render distance)
-        pcall(function()
-            Plr:RequestStreamAroundAsync(finalPos, 5)
+        -- Force-load map around target (non-blocking)
+        task.spawn(function()
+            pcall(function() Plr:RequestStreamAroundAsync(finalPos, 1) end)
         end)
 
         local isFastOrTP = (Options.AllMobType and (Options.AllMobType.Value == "Fast" or Options.AllMobType.Value == "Teleport"))
@@ -4867,6 +4945,12 @@ TB_Tabs.Autofarm.T1:AddDropdown("SelectedMob", {
 })
 
 TB_Tabs.Autofarm.T1:AddButton("Refresh", UpdateNPCLists)
+
+TB_Tabs.Autofarm.T1:AddDivider()
+
+TB_Tabs.Autofarm.T1:AddButton("Nuke Map (Turn ON before farm)", Func_NukeMap)
+
+TB_Tabs.Autofarm.T1:AddDivider()
 
 TB_Tabs.Autofarm.T1:AddToggle("MobFarm", {
     Text = "Autofarm Selected Mob",
