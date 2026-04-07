@@ -86,7 +86,7 @@ end
 -- [OCEAN HUB INJECTION START] --
 getgenv().nefasto_Running = true
 
-local NovaUrl = "https://raw.githubusercontent.com/jachvn112-droid/sailor-piece-script/0ecd794/NovaLib.luau"
+local NovaUrl = "https://raw.githubusercontent.com/jachvn112-droid/sailor-piece-script/b1a8adc/NovaLib.luau"
 
 -- Debug: Load with error handling
 local ok_http, NovaCode = pcall(function()
@@ -6056,6 +6056,7 @@ TB_Tabs.Dungeon.T2:AddToggle("DungeonAutofarm", {
     local FPS_T, FPS_S = AddSliderToggle({ Group = GB.Player.Left.General, Id = "LimitFPS", Text = "Set Max FPS", Disabled = not Support.FPS, Default = 60, Min = 5, Max = 360 })
     GB.Player.Left.General:AddToggle("FPSBoost", { Text = "FPS Boost" })
     GB.Player.Left.General:AddToggle("FPSBoost_AF", { Text = "FPS Boost [Autofarm]" })
+    GB.Player.Left.General:AddToggle("GhostMode", { Text = "Ghost Mode (Invisible)" })
 
     GB.Player.Left.Server:AddToggle("AntiAFK", {
         Text = "Anti AFK",
@@ -6649,6 +6650,76 @@ end)
 Toggles.FPSBoost_AF:OnChanged(function(state)
     if state then
         ApplyIslandWipe()
+    end
+end)
+
+-- Ghost Mode Logic
+local function ApplyGhost(char)
+    if not char then return end
+    pcall(function()
+        for _, part in pairs(char:GetDescendants()) do
+            if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                part.Transparency = 1
+                part.CanCollide = false
+            elseif part:IsA("Decal") or part:IsA("Texture") then
+                part.Transparency = 1
+            elseif part:IsA("Accessory") then
+                local handle = part:FindFirstChild("Handle")
+                if handle then handle.Transparency = 1 end
+            end
+            if part:IsA("BillboardGui") or part:IsA("SurfaceGui") then
+                part.Enabled = false
+            end
+        end
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum then
+            hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+            hum.HealthDisplayDistance = 0
+            hum.NameDisplayDistance = 0
+        end
+    end)
+end
+
+local function RestoreGhost(char)
+    if not char then return end
+    pcall(function()
+        for _, part in pairs(char:GetDescendants()) do
+            if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                part.Transparency = 0
+                part.CanCollide = true
+            elseif part:IsA("Decal") or part:IsA("Texture") then
+                part.Transparency = 0
+            elseif part:IsA("Accessory") then
+                local handle = part:FindFirstChild("Handle")
+                if handle then handle.Transparency = 0 end
+            end
+            if part:IsA("BillboardGui") or part:IsA("SurfaceGui") then
+                part.Enabled = true
+            end
+        end
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum then
+            hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.Viewer
+            hum.HealthDisplayDistance = 100
+            hum.NameDisplayDistance = 100
+        end
+    end)
+end
+
+Toggles.GhostMode:OnChanged(function(state)
+    if state then
+        ApplyGhost(Plr.Character)
+        -- Re-apply on respawn
+        task.spawn(function()
+            while Toggles.GhostMode and Toggles.GhostMode.Value do
+                task.wait(0.5)
+                pcall(function()
+                    ApplyGhost(Plr.Character)
+                end)
+            end
+        end)
+    else
+        RestoreGhost(Plr.Character)
     end
 end)
 
