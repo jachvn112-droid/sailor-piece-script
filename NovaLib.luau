@@ -80,7 +80,7 @@ function Spring:Update(dt)
 end
 
 local activeSprings = {}
-RunService.RenderStepped:Connect(function(dt)
+RunService.Heartbeat:Connect(function(dt)
     for obj, springs in pairs(activeSprings) do
         local isAlive = false
         for prop, springData in pairs(springs) do
@@ -1073,7 +1073,7 @@ function Ocean:Create(config)
             UserInputService.InputEnded:Connect(function(input)
                 if input.UserInputType == Enum.UserInputType.MouseButton1 then sliding = false end
             end)
-            RunService.RenderStepped:Connect(function()
+            RunService.Heartbeat:Connect(function()
                 if sliding then
                     local mx = Mouse.X
                     local left = track.AbsolutePosition.X
