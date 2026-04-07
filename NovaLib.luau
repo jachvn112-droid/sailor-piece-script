@@ -1,9 +1,22 @@
+<<<<<<< HEAD
 -- ==================================================================
 -- OceanHub UI Library v1.0
 -- Premium Roblox Script UI Framework - Ocean Theme
 -- ==================================================================
 
 -- ============ CORE LIBRARY ============
+=======
+-- ==================================================================================================================================================================================================================
+-- ===              ==== OceanHub UI Library v1.0                          ===
+-- ===     Premium Roblox Script UI Framework - Ocean Theme              ===
+-- ===                                                                    ===
+-- ===     Features, Toggles, Sliders, Dropdowns, ColorPickers,    ===
+-- ===     KeyPickers, ThemeManager, SaveManager, Notifications,         ===
+-- ===     Dialog System, Loading Screen, Search, DPI Scaling            ===
+-- ==================================================================================================================================================================================================================
+
+-- ==================================== CORE LIBRARY ====================================
+>>>>>>> f464f816a4af940cf9ee08a9f0de4fb9fb265808
 
 local cloneref = (cloneref or clonereference or function(instance)
     return instance
@@ -95,7 +108,14 @@ do
     end
 
     function CustomImageManager.AddAsset(
+<<<<<<< HEAD
     AssetName, RobloxAssetId, URL, ForceRedownload)
+=======
+        AssetName,
+        RobloxAssetId,
+        URL,
+        ForceRedownload)
+>>>>>>> f464f816a4af940cf9ee08a9f0de4fb9fb265808
         if CustomImageManagerAssets[AssetName] ~= nil then
             error(string.format("Asset %q already exists", AssetName))
         end
@@ -151,7 +171,11 @@ do
         end
 
         local success, errorMessage = pcall(function()
+<<<<<<< HEAD
             writefile(AssetData.Path, game))
+=======
+            writefile(AssetData.Path, game:HttpGet(AssetData.URL))
+>>>>>>> f464f816a4af940cf9ee08a9f0de4fb9fb265808
         end)
 
         return success, errorMessage
@@ -1020,7 +1044,11 @@ function Library:SetDPIScale(DPIScale)
     end
 end
 
+<<<<<<< HEAD
 function Library:GiveSignal(Connection)
+=======
+function Library:GiveSignal(Connection: RBXScriptConnection | RBXScriptSignal)
+>>>>>>> f464f816a4af940cf9ee08a9f0de4fb9fb265808
     local ConnectionType = typeof(Connection)
     if Connection and (ConnectionType == "RBXScriptConnection" or ConnectionType == "RBXScriptSignal") then
         table.insert(Library.Signals, Connection)
@@ -1034,6 +1062,7 @@ function IsValidCustomIcon(Icon)
         and (Icon:match("rbxasset") or Icon:match("roblox%.com/asset/%?id=") or Icon:match("rbxthumb://type="))
 end
 
+<<<<<<< HEAD
 -- (type stripped) type Icon = {
     Url: string,
     Id: number,
@@ -1051,6 +1080,12 @@ local FetchIcons, Icons = pcall(function()
     return (loadstring(
         game:HttpGet("https://raw.githubusercontent.com/deividcomsono/lucide-roblox-direct/refs/heads/main/source.lua")
     ) :: ()
+=======
+local FetchIcons, Icons = pcall(function()
+    return (loadstring(
+        game:HttpGet("https://raw.githubusercontent.com/deividcomsono/lucide-roblox-direct/refs/heads/main/source.lua")
+    ))()
+>>>>>>> f464f816a4af940cf9ee08a9f0de4fb9fb265808
 end)
 
 function Library:GetIcon(IconName)
@@ -1065,7 +1100,11 @@ function Library:GetIcon(IconName)
     return Icon
 end
 
+<<<<<<< HEAD
 function Library:GetCustomIcon(IconName): any
+=======
+function Library:GetCustomIcon(IconName)
+>>>>>>> f464f816a4af940cf9ee08a9f0de4fb9fb265808
     local CustomIcon = IsValidCustomIcon(IconName)
     if CustomIcon then
         return {
@@ -1133,7 +1172,11 @@ local function FillInstance(Table, Instance)
     end
 end
 
+<<<<<<< HEAD
 local function New(ClassName, Properties): any
+=======
+local function New(ClassName, Properties)
+>>>>>>> f464f816a4af940cf9ee08a9f0de4fb9fb265808
     local Instance = Instance.new(ClassName)
 
     if Templates[ClassName] then
@@ -1151,7 +1194,11 @@ local function New(ClassName, Properties): any
 end
 
 --// Main Instances \\-
+<<<<<<< HEAD
 local function SafeParentUI(Instance, Parent) -> Instance)
+=======
+local function SafeParentUI(Instance, Parent: Instance | ()
+>>>>>>> f464f816a4af940cf9ee08a9f0de4fb9fb265808
     local success, _error = pcall(function()
         if not Parent then
             Parent = CoreGui
@@ -1303,7 +1350,11 @@ function Library:ChangeCursorIconSize(Size)
     CursorCustomImage.Size = Size
 end
 
+<<<<<<< HEAD
 function Library:GetBetterColor(Color, Add): Color3
+=======
+function Library:GetBetterColor(Color, Add)
+>>>>>>> f464f816a4af940cf9ee08a9f0de4fb9fb265808
     Add = Add * (Library.IsLightTheme and -4 or 2)
     return Color3.fromRGB(
         math.clamp(Color.R * 255 + Add, 0, 255),
@@ -1312,12 +1363,20 @@ function Library:GetBetterColor(Color, Add): Color3
     )
 end
 
+<<<<<<< HEAD
 function Library:GetLighterColor(Color): Color3
+=======
+function Library:GetLighterColor(Color)
+>>>>>>> f464f816a4af940cf9ee08a9f0de4fb9fb265808
     local H, S, V = Color:ToHSV()
     return Color3.fromHSV(H, math.max(0, S - 0.1), math.min(1, V + 0.1))
 end
 
+<<<<<<< HEAD
 function Library:GetDarkerColor(Color): Color3
+=======
+function Library:GetDarkerColor(Color)
+>>>>>>> f464f816a4af940cf9ee08a9f0de4fb9fb265808
     local H, S, V = Color:ToHSV()
     return Color3.fromHSV(H, S, V / 2)
 end
@@ -1342,7 +1401,11 @@ function Library:GetTextBounds(Text, Font, Size, Width): (number, number)
     return Bounds.X, Bounds.Y
 end
 
+<<<<<<< HEAD
 function Library:MouseIsOverFrame(Frame, Mouse): boolean
+=======
+function Library:MouseIsOverFrame(Frame, Mouse)
+>>>>>>> f464f816a4af940cf9ee08a9f0de4fb9fb265808
     local AbsPos, AbsSize = Frame.AbsolutePosition, Frame.AbsoluteSize
     return Mouse.X >= AbsPos.X
         and Mouse.X <= AbsPos.X + AbsSize.X
@@ -1350,7 +1413,11 @@ function Library:MouseIsOverFrame(Frame, Mouse): boolean
         and Mouse.Y <= AbsPos.Y + AbsSize.Y
 end
 
+<<<<<<< HEAD
 function Library:SafeCallback(Func) -> ...any, ...: any)
+=======
+function Library:SafeCallback(Func: (...any)
+>>>>>>> f464f816a4af940cf9ee08a9f0de4fb9fb265808
     if not (Func and typeof(Func) == "function") then
         return
     end
@@ -1420,7 +1487,11 @@ function Library:MakeDraggable(UI, DragFrame, IgnoreToggled, IsMainWindow)
     end))
 end
 
+<<<<<<< HEAD
 function Library:MakeResizable(UI, DragFrame, Callback) -> ()?)
+=======
+function Library:MakeResizable(UI, DragFrame, Callback: ()
+>>>>>>> f464f816a4af940cf9ee08a9f0de4fb9fb265808
     local StartPos
     local FrameSize
     local Dragging = false
@@ -1738,7 +1809,16 @@ end
 --// Context Menu \\--
 local CurrentMenu
 function Library:AddContextMenu(
+<<<<<<< HEAD
     Holder, Size, Offset, List, ActiveCallback, IgnoreCornerRadius)
+=======
+    Holder,
+    Size: UDim2 | ()
+    Offset | ()
+    List,
+    ActiveCallback: (Active)
+    IgnoreCornerRadius)
+>>>>>>> f464f816a4af940cf9ee08a9f0de4fb9fb265808
     local Menu
     local ParentGui = Holder:FindFirstAncestorOfClass("ScreenGui")
     if ParentGui ~= ScreenGui and (Library.ActiveLoading and ParentGui ~= Library.ActiveLoading.ScreenGui) then
@@ -1999,7 +2079,11 @@ function Library:AddTooltip(InfoStr, DisabledInfoStr, HoverInstance)
         CurrentHoverInstance = nil
     end
 
+<<<<<<< HEAD
     local function GiveSignal(Connection)
+=======
+    local function GiveSignal(Connection: RBXScriptConnection | RBXScriptSignal)
+>>>>>>> f464f816a4af940cf9ee08a9f0de4fb9fb265808
         local ConnectionType = typeof(Connection)
         if Connection and (ConnectionType == "RBXScriptConnection" or ConnectionType == "RBXScriptSignal") then
             table.insert(TooltipTable.Signals, Connection)
@@ -2083,7 +2167,11 @@ function Library:SetIconModule(module)
     FetchIcons = true
     Icons = module
 
+<<<<<<< HEAD
     -- Top ten fixes =
+=======
+    -- Top ten fixes ====
+>>>>>>> f464f816a4af940cf9ee08a9f0de4fb9fb265808
     CheckIcon = Library:GetIcon("check")
     ArrowIcon = Library:GetIcon("chevron-up")
     ResizeIcon = Library:GetIcon("move-diagonal-2")
@@ -5172,7 +5260,11 @@ do
                 return model.Size
             end
 
+<<<<<<< HEAD
             return select(2, model))
+=======
+            return select(2, model:GetBoundingBox())
+>>>>>>> f464f816a4af940cf9ee08a9f0de4fb9fb265808
         end
 
         local function FocusCamera()
@@ -6851,7 +6943,11 @@ function Library:CreateWindow(WindowInfo)
             Description = select(3, ...)
         end
 
+<<<<<<< HEAD
         local TabButton: TextButton
+=======
+        local TabButton
+>>>>>>> f464f816a4af940cf9ee08a9f0de4fb9fb265808
         local TabLabel
         local TabIcon
 
@@ -7709,7 +7805,11 @@ function Library:CreateWindow(WindowInfo)
 
         Icon = Icon or "key"
 
+<<<<<<< HEAD
         local TabButton: TextButton
+=======
+        local TabButton
+>>>>>>> f464f816a4af940cf9ee08a9f0de4fb9fb265808
         local TabLabel
         local TabIcon
 
@@ -9303,7 +9403,11 @@ Library:GiveSignal(Teams.ChildRemoved:Connect(OnTeamChange))
 
 -- getgenv().OceanLibrary = Library
 
+<<<<<<< HEAD
 -- ============ THEME MANAGER ============
+=======
+-- ==================================== THEME MANAGER ====================================
+>>>>>>> f464f816a4af940cf9ee08a9f0de4fb9fb265808
 
 local ThemeManager = {}
 do
@@ -9581,7 +9685,11 @@ do
         end
         theme["FontFace"] = self.Library.Options["FontFace"].Value
 
+<<<<<<< HEAD
         writefile(self.Folder .. "/themes/" .. file .. ".json", HttpService))
+=======
+        writefile(self.Folder .. "/themes/" .. file .. ".json", HttpService:JSONEncode(theme))
+>>>>>>> f464f816a4af940cf9ee08a9f0de4fb9fb265808
     end
 
     function ThemeManager:Delete(name)
@@ -9621,7 +9729,11 @@ do
                 end
 
                 if char == "/" or char == "\\" then
+<<<<<<< HEAD
                     table.insert(out, file, start - 1))
+=======
+                    table.insert(out, file:sub(pos + 1, start - 1))
+>>>>>>> f464f816a4af940cf9ee08a9f0de4fb9fb265808
                 end
             end
         end
@@ -9784,7 +9896,11 @@ end
 
 -- OceanHub ThemeManager loaded
 
+<<<<<<< HEAD
 -- ============ SAVE MANAGER ============
+=======
+-- ==================================== SAVE MANAGER ====================================
+>>>>>>> f464f816a4af940cf9ee08a9f0de4fb9fb265808
 
 local SaveManager = {} do
     SaveManager.Folder = "OceanHubSettings"
@@ -10056,7 +10172,11 @@ local SaveManager = {} do
                     end
 
                     if char == "/" or char == "\\" then
+<<<<<<< HEAD
                         table.insert(out, file, start - 1))
+=======
+                        table.insert(out, file:sub(pos + 1, start - 1))
+>>>>>>> f464f816a4af940cf9ee08a9f0de4fb9fb265808
                     end
                 end
             end
@@ -10255,9 +10375,15 @@ local SaveManager = {} do
     SaveManager:BuildFolderTree()
 end
 
+<<<<<<< HEAD
 -- ==================================================================
 -- Return all modules
 -- ==================================================================
+=======
+-- =========================================================================================================================================================
+-- Return all modules
+-- =========================================================================================================================================================
+>>>>>>> f464f816a4af940cf9ee08a9f0de4fb9fb265808
 getgenv().OceanLibrary = Library
 
 return {
@@ -10265,3 +10391,7 @@ return {
     ThemeManager = ThemeManager,
     SaveManager = SaveManager,
 }
+<<<<<<< HEAD
+=======
+
+>>>>>>> f464f816a4af940cf9ee08a9f0de4fb9fb265808
